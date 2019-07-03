@@ -95,6 +95,8 @@ class EjeaFetchingCachedOutputsFromDatabaseSpec extends EngineJobExecutionActorS
   }
 
   val callCachingEntryId = CallCachingEntryId(75)
+
   def initialData = ResponsePendingData(helper.backendJobDescriptor, helper.bjeaProps, None, None, Some(EJEACacheHit(CacheHit(callCachingEntryId), 2, None)), None)
+
   def ejeaInFetchingCachedOutputsFromDatabaseState(restarting: Boolean = false) = helper.buildEJEA(restarting = restarting, callCachingMode = CallCachingActivity(ReadAndWriteCache)).setStateInline(data = initialData)
 }

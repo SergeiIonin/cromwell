@@ -12,7 +12,7 @@ CROMWELL_SBT_TEST_SPAN_SCALE_FACTOR=1
 
 case "${CROMWELL_BUILD_PROVIDER}" in
     "${CROMWELL_BUILD_PROVIDER_TRAVIS}")
-        CROMWELL_SBT_TEST_EXCLUDE_TAGS="AwsTest,CromwellIntegrationTest,GcsIntegrationTest"
+        CROMWELL_SBT_TEST_EXCLUDE_TAGS="AwsTest,GcsIntegrationTest"
         CROMWELL_SBT_TEST_SPAN_SCALE_FACTOR=2
         ;;
     "${CROMWELL_BUILD_PROVIDER_JENKINS}")
@@ -27,8 +27,9 @@ esac
 export CROMWELL_SBT_TEST_EXCLUDE_TAGS
 export CROMWELL_SBT_TEST_SPAN_SCALE_FACTOR
 
-sbt -Dakka.test.timefactor=${CROMWELL_SBT_TEST_SPAN_SCALE_FACTOR} -Dbackend.providers.Local.config.filesystems.local.localization.0=copy coverage test
+cromwell::build::setup_centaur_environment
+cromwell::build::assemble_jars
+cromwell::build::run_centaur
 
-cromwell::build::generate_code_coverage
+sbt -Dakka.test.timefactor=${CROMWELL_SBT_TEST_SPAN_SCALE_FACTOR} -Dbackend.providers.Local.config.filesystems.local.localization.0=copy  coverage it:test
 
-cromwell::build::publish_artifacts
