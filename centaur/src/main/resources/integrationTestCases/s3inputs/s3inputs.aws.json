@@ -1,0 +1,3 @@
+{
+  "ReadFile.read_file.file": "s3://standalone-s3-bucket/meats.txt"
+}

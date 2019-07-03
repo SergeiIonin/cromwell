@@ -1,0 +1,9 @@
+name: s3inputs
+testFormat: workflowsuccess
+backends: [ AWSBATCH ]
+
+files {
+  workflow: s3inputs/s3inputs.aws.wdl
+  inputs: s3inputs/s3inputs.aws.json
+
+}
