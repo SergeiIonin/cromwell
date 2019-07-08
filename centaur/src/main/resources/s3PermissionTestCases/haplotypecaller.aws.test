@@ -1,0 +1,13 @@
+name: haplotypecaller.aws
+testFormat: workflowsuccess
+backends: [ AWSBATCH ]
+
+files {
+  workflow: haplotype-caller-workflow/HaplotypeCallerWF.aws.wdl
+  inputs: haplotype-caller-workflow/HaplotypeCallerWF.aws.inputs.json
+}
+
+metadata {
+  workflowName: HaplotypeCallerGvcf_GATK4
+  status: Succeeded
+}

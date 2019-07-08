@@ -1,0 +1,3 @@
+{
+  "ReadFile.read_file.file": "s3://cromwell-local-s3/meats.txt"
+}

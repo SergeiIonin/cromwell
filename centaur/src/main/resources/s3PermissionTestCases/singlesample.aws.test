@@ -1,0 +1,14 @@
+name: singlesample.aws
+testFormat: workflowsuccess
+backends: [ AWSBATCH ]
+
+files {
+  workflow: single-sample-workflow/processing-for-variant-discovery-gatk4.aws.wdl
+  inputs: single-sample-workflow/processing-for-variant-discovery-gatk4.hg38.wgs.aws.inputs.json
+  options: single-sample-workflow/processing-for-variant-discovery-gatk4.aws.options.json
+}
+
+metadata {
+  workflowName: PreProcessingForVariantDiscovery_GATK4
+  status: Succeeded
+}
