@@ -7,9 +7,11 @@ import cats.instances.list._
 import cats.syntax.flatMap._
 import cats.syntax.traverse._
 import centaur.reporting.{ErrorReporters, SuccessReporters, TestEnvironment}
+import centaur.serialization.TestsReportsSerializer
 import centaur.test.CentaurTestException
 import centaur.test.standard.CentaurTestCase
 import centaur.test.submit.{SubmitResponse, SubmitWorkflowResponse}
+import common.util.VersionUtil
 import org.scalatest._
 
 import scala.concurrent.Future
@@ -26,11 +28,15 @@ abstract class AbstractCentaurTestCaseSpec(cromwellBackends: List[String], cromw
   SuccessReporters.getClass
 
   private def testCases(baseFile: File): List[CentaurTestCase] = {
+    val successfullTests = TestsReportsSerializer.read(CentaurConfig.testsReports)
+    val cromwellVer = VersionUtil.getVersion("cromwell")
+    val testNamesSet = successfullTests.testsToSkip(cromwellVer)
+
     val files = baseFile.list.filter(_.isRegularFile).toList
     val testCases = files.traverse(CentaurTestCase.fromFile(cromwellTracker))
 
     testCases match {
-      case Valid(l) => l
+      case Valid(l) => l.filterNot(x => testNamesSet.contains(getTestName(x)))
       case Invalid(e) => throw new IllegalStateException("\n" + e.toList.mkString("\n") + "\n")
     }
   }
@@ -41,8 +47,11 @@ abstract class AbstractCentaurTestCaseSpec(cromwellBackends: List[String], cromw
     optionalTestCases ++ standardTestCases
   }
 
+  private def getTestName(testCase: CentaurTestCase): String =
+    s"${testCase.testFormat.testSpecString} ${testCase.workflow.testName}"
+
   def executeStandardTest(testCase: CentaurTestCase): Unit = {
-    def nameTest = s"${testCase.testFormat.testSpecString} ${testCase.workflow.testName}"
+    def nameTest = getTestName(testCase)
 
     def runTest(): IO[SubmitResponse] = testCase.testFunction.run
 
@@ -174,10 +183,18 @@ abstract class AbstractCentaurTestCaseSpec(cromwellBackends: List[String], cromw
         case _ => runTestIo
       },
       {
-        case workflowResponse: SubmitWorkflowResponse => SuccessReporters.logSuccessfulRun(workflowResponse)
+        case workflowResponse: SubmitWorkflowResponse =>
+          logTestSuccess(testName)
+          SuccessReporters.logSuccessfulRun(workflowResponse)
         case other => IO.pure(other)
       }
     )
+  }
+
+  private def logTestSuccess(testName: String): Unit = {
+    val testsReport = TestsReportsSerializer.read(CentaurConfig.testsReports)
+    testsReport.addSuccessfulTest(testName, VersionUtil.getVersion("cromwell"))
+    TestsReportsSerializer.write(CentaurConfig.testsReports, testsReport)
   }
 
 }

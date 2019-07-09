@@ -65,6 +65,8 @@ object CentaurConfig {
   lazy val optionalTokenPath: Option[Path] = conf.get[Option[Path]]("optionalTokenPath") valueOrElse None
   lazy val optionalToken: Option[String] = optionalTokenPath.map(File(_).contentAsString.trim)
 
+  lazy val testsReports: String = "testsReports.dat"
+
   implicit class EnhancedJavaDuration(val javaDuration: java.time.Duration) extends AnyVal {
     def toScala: FiniteDuration = FiniteDuration(javaDuration.toMillis, TimeUnit.MILLISECONDS)
   }
