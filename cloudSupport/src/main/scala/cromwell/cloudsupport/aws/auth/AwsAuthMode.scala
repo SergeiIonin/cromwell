@@ -161,6 +161,10 @@ final case class AssumeRoleMode(override val name: String,
 
     val stsCredentials = builder.build.assumeRole(request).credentials
 
+    println (s"Aws access key = ${stsCredentials.accessKeyId}")
+    println (s"Aws secret access key = ${stsCredentials.secretAccessKey}")
+    println (s"Aws session token = ${stsCredentials.sessionToken}")
+
     val sessionCredentials = AwsSessionCredentials.create(
                                stsCredentials.accessKeyId,
                                stsCredentials.secretAccessKey,

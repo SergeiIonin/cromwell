@@ -39,7 +39,7 @@ import com.typesafe.config.{Config, ConfigException}
 import common.exception.MessageAggregation
 import common.validation.ErrorOr._
 import common.validation.Validation._
-import cromwell.cloudsupport.aws.auth.{AssumeRoleMode, AwsAuthMode, CustomKeyMode, DefaultMode}
+import cromwell.cloudsupport.aws.auth.{AssumeRoleMode, AwsAuthMode, CustomKeyMode}
 import net.ceedubs.ficus.Ficus._
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
@@ -94,9 +94,9 @@ object AwsConfiguration {
         }
       }
 
-      def defaultAuth(authConfig: Config, name: String, region: Option[String]): ErrorOr[AwsAuthMode] =  validate {
+      /*def defaultAuth(authConfig: Config, name: String, region: Option[String]): ErrorOr[AwsAuthMode] =  validate {
         DefaultMode(name, region)
-      }
+      }*/
 
       def assumeRoleAuth(authConfig: Config, name: String, region: Option[String]): ErrorOr[AwsAuthMode] = validate {
         val externalId = authConfig.getOrElse("external-id", "")
@@ -114,7 +114,7 @@ object AwsConfiguration {
       val scheme = authConfig.getString("scheme")
 
       scheme match {
-        case "default" => defaultAuth(authConfig, name, region)
+        case "default" => customKeyAuth(authConfig, name, region) //defaultAuth(authConfig, name, region)
         case "custom_keys" => customKeyAuth(authConfig, name, region)
         case "assume_role" => assumeRoleAuth(authConfig, name, region)
         case wut => s"Unsupported authentication scheme: $wut".invalidNel
