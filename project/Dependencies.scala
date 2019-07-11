@@ -61,8 +61,9 @@ object Dependencies {
   private val owlApiV = "5.1.9"
   private val paradiseV = "2.1.1"
   private val pegdownV = "1.6.0"
+  private val postgresV = "42.2.5"
   private val rdf4jV = "2.4.2"
-  private val refinedV = "0.9.4"
+  private val refinedV = "0.9.8"
   private val rhinoV = "1.7.10"
   private val scalaGraphV = "1.12.5"
   private val scalaLoggingV = "3.9.2"
@@ -321,7 +322,8 @@ object Dependencies {
 
   private val dbmsDependencies = List(
     "org.hsqldb" % "hsqldb" % hsqldbV,
-    "mysql" % "mysql-connector-java" % mysqlV
+    "mysql" % "mysql-connector-java" % mysqlV,
+    "org.postgresql" % "postgresql" % postgresV
   )
 
   private val refinedTypeDependenciesList = List(
@@ -338,8 +340,9 @@ object Dependencies {
 
   val cloudSupportDependencies = googleApiClientDependencies ++ googleCloudDependencies ++ betterFilesDependencies ++ awsCloudDependencies
 
-  val databaseSqlDependencies = configDependencies ++ catsDependencies ++ slickDependencies ++ dbmsDependencies ++
-    refinedTypeDependenciesList
+  val databaseSqlDependencies = List(
+    "commons-io" % "commons-io" % commonsIoV,
+  ) ++ configDependencies ++ catsDependencies ++ slickDependencies ++ dbmsDependencies ++ refinedTypeDependenciesList
 
   val statsDDependencies = List(
     "nl.grons" %% "metrics-scala" % metrics3ScalaV,
@@ -370,8 +373,7 @@ object Dependencies {
     "org.scalacheck" %% "scalacheck" % scalacheckV % Test,
     "com.github.mpilquist" %% "simulacrum" % simulacrumV,
     "commons-codec" % "commons-codec" % commonsCodecV,
-    "eu.timepit" %% "refined" % refinedV
-  )
+  ) ++ circeDependencies ++ refinedTypeDependenciesList
 
   val wdlDependencies = List(
     "commons-io" % "commons-io" % commonsIoV,
@@ -421,15 +423,14 @@ object Dependencies {
     "org.javadelight" % "delight-rhino-sandbox" % delightRhinoSandboxV,
     "org.scalamock" %% "scalamock" % scalamockV % Test,
     "commons-io" % "commons-io" % commonsIoV % Test
-  ) ++ circeDependencies ++ womDependencies ++ refinedTypeDependenciesList ++ betterFilesDependencies ++
-    owlApiDependencies
+  ) ++ betterFilesDependencies ++ owlApiDependencies
 
   val womtoolDependencies = catsDependencies ++ slf4jBindingDependencies
 
   val centaurCwlRunnerDependencies = List(
     "com.github.scopt" %% "scopt" % scoptV,
     "io.circe" %% "circe-optics" % circeOpticsV
-  ) ++ slf4jBindingDependencies ++ circeDependencies
+  ) ++ slf4jBindingDependencies
 
   val coreDependencies = List(
     "com.google.auth" % "google-auth-library-oauth2-http" % googleOauth2V,

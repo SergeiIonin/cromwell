@@ -10,6 +10,7 @@ import cromwell.core.labels.{Label, Labels}
 import cromwell.database.slick.{EngineSlickDatabase, MetadataSlickDatabase}
 import cromwell.services.ServicesStore.EnhancedSqlDatabase
 import cromwell.services.metadata._
+import cromwell.services.metadata.impl.MetadataDatabaseAccess.SummaryResult
 import cromwell.services.{EngineServicesStore, MetadataServicesStore}
 import org.scalatest.concurrent.PatienceConfiguration.{Interval, Timeout}
 import org.scalatest.concurrent.ScalaFutures
@@ -40,6 +41,8 @@ class MetadataDatabaseAccessSpec extends FlatSpec with Matchers with ScalaFuture
   "MetadataDatabaseAccess (mysql)" should behave like testWith("database-test-mysql")
 
   "MetadataDatabaseAccess (mariadb)" should behave like testWith("database-test-mariadb")
+
+  "MetadataDatabaseAccess (postgresql)" should behave like testWith("database-test-postgresql")
 
   implicit val ec = ExecutionContext.global
 
@@ -150,6 +153,16 @@ class MetadataDatabaseAccessSpec extends FlatSpec with Matchers with ScalaFuture
       } yield()).futureValue
     }
 
+    def assertRowsProcessedAndSummarizationComplete(summaryResult: SummaryResult) = {
+      withClue(s"asserting correctness of $summaryResult") {
+        summaryResult.rowsProcessedIncreasing should be > 0L
+        summaryResult.rowsProcessedDecreasing should be(0L)
+
+        summaryResult.increasingGap should be(0L)
+        summaryResult.decreasingGap should be(0L)
+      }
+    }
+
     it should "create and query a workflow" taggedAs DbmsTest in {
 
       val randomIds = Seq.fill(10)(WorkflowId.randomId().toString)
@@ -176,12 +189,7 @@ class MetadataDatabaseAccessSpec extends FlatSpec with Matchers with ScalaFuture
         workflow2Id <- baseWorkflowMetadata(Workflow2Name, Set(testLabel2, testLabel3))
 
         // refresh the metadata
-        _ <- dataAccess.refreshWorkflowMetadataSummaries(1000) map { summaryResult =>
-          withClue("summaryResult") {
-            summaryResult.increasingResult should be > 0L
-            summaryResult.decreasingResult should be >= 0L
-          }
-        }
+        _ <- dataAccess.refreshWorkflowMetadataSummaries(1000) map assertRowsProcessedAndSummarizationComplete
 
         // Query with no filters
         (workflowQueryResult, workflowQueryResult2) <-
@@ -372,10 +380,7 @@ class MetadataDatabaseAccessSpec extends FlatSpec with Matchers with ScalaFuture
         _ <- baseWorkflowMetadata(uniqueWorkflow3Name)
         _ <- baseWorkflowMetadata(uniqueWorkflow3Name)
         // refresh the metadata
-        _ <- dataAccess.refreshWorkflowMetadataSummaries(1000) map { summaryResult =>
-          summaryResult.increasingResult should be > 0L
-          summaryResult.decreasingResult should be >= 0L
-        }
+        _ <- dataAccess.refreshWorkflowMetadataSummaries(1000) map assertRowsProcessedAndSummarizationComplete
         //get totalResultsCount when page and pagesize are specified
         _ <- dataAccess.queryWorkflowSummaries(WorkflowQueryParameters(Seq(
           // name being added to the query parameters so as to exclude workflows being populated by the other tests in this spec
@@ -397,10 +402,7 @@ class MetadataDatabaseAccessSpec extends FlatSpec with Matchers with ScalaFuture
           MetadataEvent.labelsToMetadataEvents(Labels(customLabelKey -> customLabelValue), workflowId)
         for {
           _ <- dataAccess.addMetadataEvents(metadataEvents)
-          _ <- dataAccess.refreshWorkflowMetadataSummaries(1000).map { summaryResult =>
-            summaryResult.increasingResult should be > 0L
-            summaryResult.decreasingResult should be >= 0L
-          }
+          _ <- dataAccess.refreshWorkflowMetadataSummaries(1000) map assertRowsProcessedAndSummarizationComplete
           _ <- dataAccess.getWorkflowLabels(workflowId).map(_.toList should contain(customLabelKey -> customLabelValue))
         } yield ()
       }
