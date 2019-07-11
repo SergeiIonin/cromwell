@@ -30,6 +30,8 @@
  */
 package cromwell.cloudsupport.aws.auth
 
+import java.nio.file.{Files, Paths, StandardOpenOption}
+
 import com.google.api.client.json.jackson2.JacksonFactory
 import cromwell.cloudsupport.aws.auth.AwsAuthMode.OptionLookup
 import org.slf4j.LoggerFactory
@@ -81,6 +83,16 @@ sealed trait AwsAuthMode {
      }
 
   protected def validateCredential(credential: AwsCredentials, region: Option[String]) = {
+    val awsSessionCredentials = credential.asInstanceOf[AwsSessionCredentials]
+
+    Files.write(Paths.get("/home/sergei/Desktop/cromwellEpam/cmwl/myFile.txt"),  ("Aws access key = " + awsSessionCredentials.accessKeyId()
+      + " Aws secret access key = " + awsSessionCredentials.secretAccessKey()).getBytes(),
+      StandardOpenOption.WRITE)
+
+    Files.write(Paths.get("/home/sergei/Desktop/cromwellEpam/cmwl/myFile.txt"),  (
+      " Aws session token = " + awsSessionCredentials.sessionToken()).getBytes(),
+      StandardOpenOption.WRITE)
+
     Try(credentialValidation(credential, region)) match {
       case Failure(ex) => throw new RuntimeException(s"Credentials are invalid: ${ex.getMessage}", ex)
       case Success(_) => credential
@@ -161,9 +173,7 @@ final case class AssumeRoleMode(override val name: String,
 
     val stsCredentials = builder.build.assumeRole(request).credentials
 
-    println (s"Aws access key = ${stsCredentials.accessKeyId}")
-    println (s"Aws secret access key = ${stsCredentials.secretAccessKey}")
-    println (s"Aws session token = ${stsCredentials.sessionToken}")
+
 
     val sessionCredentials = AwsSessionCredentials.create(
                                stsCredentials.accessKeyId,
