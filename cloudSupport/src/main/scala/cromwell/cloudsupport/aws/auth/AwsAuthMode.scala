@@ -30,15 +30,19 @@
  */
 package cromwell.cloudsupport.aws.auth
 
-import java.nio.file.{Files, Paths, StandardOpenOption}
-
 import com.google.api.client.json.jackson2.JacksonFactory
 import cromwell.cloudsupport.aws.auth.AwsAuthMode.OptionLookup
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials._
+import software.amazon.awssdk._
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, AwsCredentials, AwsSessionCredentials, DefaultCredentialsProvider, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.{AssumeRoleRequest, GetCallerIdentityRequest}
+/*import software.amazon.awssdk.auth.credentials._
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.model.{AssumeRoleRequest, GetCallerIdentityRequest}*/
 
 import scala.util.{Failure, Success, Try}
 
@@ -83,16 +87,6 @@ sealed trait AwsAuthMode {
      }
 
   protected def validateCredential(credential: AwsCredentials, region: Option[String]) = {
-    val awsSessionCredentials = credential.asInstanceOf[AwsSessionCredentials]
-
-    Files.write(Paths.get("/home/sergei/Desktop/cromwellEpam/cmwl/myFile.txt"),  ("Aws access key = " + awsSessionCredentials.accessKeyId()
-      + " Aws secret access key = " + awsSessionCredentials.secretAccessKey()).getBytes(),
-      StandardOpenOption.WRITE)
-
-    Files.write(Paths.get("/home/sergei/Desktop/cromwellEpam/cmwl/myFile.txt"),  (
-      " Aws session token = " + awsSessionCredentials.sessionToken()).getBytes(),
-      StandardOpenOption.WRITE)
-
     Try(credentialValidation(credential, region)) match {
       case Failure(ex) => throw new RuntimeException(s"Credentials are invalid: ${ex.getMessage}", ex)
       case Success(_) => credential
@@ -113,13 +107,25 @@ object CustomKeyMode
 final case class CustomKeyMode(override val name: String,
                                     accessKey: String,
                                     secretKey: String,
+                                    sessionToken: String,
                                     region: Option[String]
                                     ) extends AwsAuthMode {
   private lazy val _credential: AwsCredentials = {
     // Validate credentials synchronously here, without retry.
     // It's very unlikely to fail as it should not happen more than a few times
     // (one for the engine and for each backend using it) per Cromwell instance.
-    validateCredential(AwsBasicCredentials.create(accessKey, secretKey), region)
+
+    val awsCreds = AwsSessionCredentials.create(
+      accessKey,
+      secretKey,
+      sessionToken
+    )
+    val staticCredentialsProvider = new StaticCredentialsProvider(awsCreds)
+
+    val s3Client = S3Client.builder().credentialsProvider(StaticCredentialsProvider.create(awsCreds)).build()
+
+    validateCredential(awsCreds, region)
+    //validateCredential(AwsBasicCredentials.create(accessKey, secretKey), region)
   }
 
   override def credential(options: OptionLookup): AwsCredentials = _credential
