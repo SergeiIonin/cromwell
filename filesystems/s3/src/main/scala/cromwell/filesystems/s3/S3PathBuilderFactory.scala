@@ -60,7 +60,7 @@ final case class S3PathBuilderFactory private(globalConfig: Config, instanceConf
   }
 
   // Ignores the authMode and creates an S3PathBuilder using the passed credentials directly.
-  // Can be used when the Credentials are already available.
+  // Can be used when the Credentials are already available.  todo looks like it always uses default creds, is it true?
   def fromCredentials(options: WorkflowOptions, credentials: AwsCredentials): S3PathBuilder = {
     S3PathBuilder.fromCredentials(credentials, S3Storage.DefaultConfiguration, options, conf.region)
   }

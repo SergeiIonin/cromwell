@@ -36,6 +36,7 @@ import software.amazon.awssdk.auth.credentials.{AwsCredentials, StaticCredential
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.{S3Client, S3Configuration}
 
+// todo this might contain only default mode
 object S3Storage {
   val DefaultConfiguration = {
     val accelerateModeEnabled = ConfigFactory.load().as[Option[Boolean]]("s3.accelerate-mode").getOrElse(false)
@@ -60,6 +61,10 @@ object S3Storage {
   def s3Client(credentials: AwsCredentials, region: Option[Region]): S3Client = {
     s3Client(s3Configuration(), credentials, region)
   }
+
+/*  def s3Client(credentials: AwsCredentials): S3Client = {
+    S3Client.builder().credentialsProvider(StaticCredentialsProvider.create(credentials)).build()
+  }*/
 
   def s3Configuration(accelerateModeEnabled: Boolean = false,
                       dualstackEnabled: Boolean = false,

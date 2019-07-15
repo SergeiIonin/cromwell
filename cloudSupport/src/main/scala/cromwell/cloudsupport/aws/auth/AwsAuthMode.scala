@@ -33,10 +33,8 @@ package cromwell.cloudsupport.aws.auth
 import com.google.api.client.json.jackson2.JacksonFactory
 import cromwell.cloudsupport.aws.auth.AwsAuthMode.OptionLookup
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk._
-import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, AwsCredentials, AwsSessionCredentials, DefaultCredentialsProvider, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsCredentials, AwsSessionCredentials, DefaultCredentialsProvider, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.{AssumeRoleRequest, GetCallerIdentityRequest}
 /*import software.amazon.awssdk.auth.credentials._
@@ -120,9 +118,9 @@ final case class CustomKeyMode(override val name: String,
       secretKey,
       sessionToken
     )
-    val staticCredentialsProvider = new StaticCredentialsProvider(awsCreds)
+    //val staticCredentialsProvider = new StaticCredentialsProvider(awsCreds)
 
-    val s3Client = S3Client.builder().credentialsProvider(StaticCredentialsProvider.create(awsCreds)).build()
+    //val s3Client = S3Client.builder().credentialsProvider(StaticCredentialsProvider.create(awsCreds)).build()
 
     validateCredential(awsCreds, region)
     //validateCredential(AwsBasicCredentials.create(accessKey, secretKey), region)

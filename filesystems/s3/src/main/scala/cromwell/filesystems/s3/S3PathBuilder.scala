@@ -118,7 +118,7 @@ object S3PathBuilder {
     val credentials = authMode.credential((key: String) => options.get(key).get)
 
     // Other backends needed retry here. In case we need retry, we'll return
-    // a future. This will allow us to add capability without changing signature
+    // a future. This will allow us to add capability without changing signature todo what does it mean?
     Future(fromCredentials(credentials,
       configuration,
       options,
