@@ -33,14 +33,10 @@ package cromwell.cloudsupport.aws.auth
 import com.google.api.client.json.jackson2.JacksonFactory
 import cromwell.cloudsupport.aws.auth.AwsAuthMode.OptionLookup
 import org.slf4j.LoggerFactory
-import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsCredentials, AwsSessionCredentials, DefaultCredentialsProvider, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.credentials.{AnonymousCredentialsProvider, AwsBasicCredentials, AwsCredentials, AwsSessionCredentials, DefaultCredentialsProvider, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.{AssumeRoleRequest, GetCallerIdentityRequest}
-/*import software.amazon.awssdk.auth.credentials._
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.sts.StsClient
-import software.amazon.awssdk.services.sts.model.{AssumeRoleRequest, GetCallerIdentityRequest}*/
 
 import scala.util.{Failure, Success, Try}
 
@@ -102,10 +98,10 @@ case object MockAuthMode extends AwsAuthMode {
 
 object CustomKeyMode
 
+// todo actually AwsSessionCredentials should be used
 final case class CustomKeyMode(override val name: String,
                                     accessKey: String,
                                     secretKey: String,
-                                    sessionToken: String,
                                     region: Option[String]
                                     ) extends AwsAuthMode {
   private lazy val _credential: AwsCredentials = {
@@ -113,10 +109,9 @@ final case class CustomKeyMode(override val name: String,
     // It's very unlikely to fail as it should not happen more than a few times
     // (one for the engine and for each backend using it) per Cromwell instance.
 
-    val awsCreds = AwsSessionCredentials.create(
+    val awsCreds = AwsBasicCredentials.create(
       accessKey,
-      secretKey,
-      sessionToken
+      secretKey
     )
     //val staticCredentialsProvider = new StaticCredentialsProvider(awsCreds)
 

@@ -9,7 +9,7 @@ import cats.data.Validated._
 import cats.effect.IO
 import cats.syntax.apply._
 import cats.syntax.validated._
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.ConfigFactory // add {Config, ConfigFactory}
 import common.exception.MessageAggregation
 import common.validation.ErrorOr._
 import cromwell.CommandLineArguments.{ValidSubmission, WorkflowSourceOrUrl}

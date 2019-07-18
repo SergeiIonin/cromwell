@@ -85,15 +85,19 @@ object AwsConfiguration {
     def buildAuth(authConfig: Config): ErrorOr[AwsAuthMode] = {
 
       def customKeyAuth(authConfig: Config, name: String, region: Option[String]): ErrorOr[AwsAuthMode] = validate {
-        (authConfig.getAs[String]("access-key"),
+
+        /*(authConfig.getAs[String]("access-key"),
           authConfig.getAs[String]("secret-key"),
-          authConfig.getAs[String]("session-token")) match {
-          case (Some(accessKey), Some(secretKey), Some(sessionToken)) =>
+          authConfig.getAs[String]("session-token"))*/
+        // todo consider using of session token also
+        (Option(authConfig.root().get("access-key").toString), Option(authConfig.root().get("secret-key").toString)) match {
+          case (Some(accessKey), Some(secretKey)) =>
             log.info(s"region is $region")
             log.info(s"access-key is $accessKey")
             log.info(s"secret-key is $secretKey")
-            log.info(s"session-token is $sessionToken")
-            CustomKeyMode(name, accessKey, secretKey, sessionToken, region)
+            //log.info(s"session-token is $sessionToken")
+            CustomKeyMode(name, authConfig.root().get("access-key").toString, authConfig.root().get("secret-key").toString, region)
+          //CustomKeyMode(name, accessKey, secretKey, sessionToken, region)
           case _ => throw new ConfigException.Generic(s"""Access key and/or secret """ +
             s"""key missing for service account "$name". See reference.conf under the aws.auth, """ +
             s"""custom key section for details of required configuration.""")
