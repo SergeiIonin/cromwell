@@ -1,0 +1,4 @@
+cromwell.CromwellApp
+-Dconfig.file=/home/sergei/Desktop/cromwell3/cromwell/awsDEF.conf -Xmx4g -Xms4g
+run file_copy_test.wdl --options cromwell-options.json
+/home/sergei/Desktop/cromwell3/cromwell
