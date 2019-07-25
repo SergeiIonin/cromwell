@@ -1,0 +1,6 @@
+{
+"final_workflow_outputs_dir":"s3://testcrmwlnondefionin",
+"use_relative_output_paths":true,
+"final_workflow_log_dir":"s3://ionin-test-bucket/pics"
+}
+
