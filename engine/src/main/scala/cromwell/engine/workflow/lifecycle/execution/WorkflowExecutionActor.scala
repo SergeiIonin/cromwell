@@ -507,6 +507,13 @@ case class WorkflowExecutionActor(params: WorkflowExecutionActorParams)
           if (shardCount == 1) tag
           else s"$tag ($shardCount shards)"
       })
+
+    workflowLogger.info(s"her's runnableKeysSet $runnableKeys")
+    def getKeySet(): Unit = runnableKeys.foreach(println(_))
+    getKeySet
+
+    val runnableCallsKeySet = runnableCalls.seq.toString
+    workflowLogger.info(s"runnableCalls keySet is $runnableCallsKeySet")
     val mode = if (restarting) "Restarting" else "Starting"
     if (runnableCalls.nonEmpty) workflowLogger.info(s"$mode " + runnableCalls.mkString(", "))
 

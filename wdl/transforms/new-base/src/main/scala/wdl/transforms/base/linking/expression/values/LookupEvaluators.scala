@@ -13,9 +13,12 @@ import wom.types._
 import wom.values._
 import wdl.transforms.base.wdlom2wdl.WdlWriter.ops._
 import wdl.transforms.base.wdlom2wdl.WdlWriterImpl._
+import org.slf4j.LoggerFactory
 
 
 object LookupEvaluators {
+
+  private val log = LoggerFactory.getLogger("LookupEvaluators")
 
   implicit val identifierLookupEvaluator: ValueEvaluator[IdentifierLookup] = new ValueEvaluator[IdentifierLookup] {
     override def evaluateValue(a: IdentifierLookup,
@@ -25,6 +28,7 @@ object LookupEvaluators {
                               (implicit expressionValueEvaluator: ValueEvaluator[ExpressionElement]): ErrorOr[EvaluatedValue[_ <: WomValue]] = {
       inputs.get(a.identifier) match {
         case Some(value) =>
+          log.info(s"value of a.identifier is ${a.identifier}")
           val mapped = forCommandInstantiationOptions.fold(value)(_.valueMapper(value))
           EvaluatedValue(mapped, Seq.empty).validNel
         case None =>

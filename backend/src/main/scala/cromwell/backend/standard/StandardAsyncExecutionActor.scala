@@ -944,9 +944,14 @@ trait StandardAsyncExecutionActor
   }
 
   override def executeOrRecover(mode: ExecutionMode)(implicit ec: ExecutionContext): Future[ExecutionHandle] = {
+
     val executeOrRecoverFuture = {
       mode match {
-        case Reconnect(jobId: StandardAsyncJob@unchecked) => reconnectAsync(jobId)
+        case Reconnect(jobId: StandardAsyncJob@unchecked) => {
+         /* val modeJobId = mode.jobId
+          jobLogger.info(s"INSIDE executeOrRecover $modeJobId")*/
+          reconnectAsync(jobId)
+        }
         case ReconnectToAbort(jobId: StandardAsyncJob@unchecked) => reconnectToAbortAsync(jobId)
         case Recover(jobId: StandardAsyncJob@unchecked) => recoverAsync(jobId)
         case _ =>

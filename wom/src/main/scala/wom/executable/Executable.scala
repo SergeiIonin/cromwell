@@ -80,6 +80,17 @@ object Executable {
 
     val unwantedInputs = if (strictValidation) inputCoercionMap.keySet.diff(graph.externalInputNodes.map(_.nameInInputSet)) else Set.empty
 
+    val allInputs = inputCoercionMap
+
+    import org.slf4j.LoggerFactory
+    val log = LoggerFactory.getLogger("ExecutableLogger")
+    log.info("All inputs are")
+    def getAllInputs(): Unit = {
+      //NonEmptyList.fromList(allInputs.toList).foreach(println(_))
+      allInputs.foreach(println(_))
+    }
+    getAllInputs()
+
     val wantedInputsValidation: ErrorOr[Unit] = NonEmptyList.fromList(unwantedInputs.toList) match {
       case None => ().validNel
       case Some(unwanteds) => Invalid(unwanteds.map(unwanted => s"WARNING: Unexpected input provided: $unwanted"))

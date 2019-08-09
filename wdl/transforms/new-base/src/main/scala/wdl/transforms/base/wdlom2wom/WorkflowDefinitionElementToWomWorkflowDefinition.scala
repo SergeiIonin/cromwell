@@ -17,6 +17,7 @@ import wdl.model.draft3.graph.ExpressionValueConsumer.ops._
 import wdl.model.draft3.graph.expression.{FileEvaluator, TypeEvaluator, ValueEvaluator}
 import wdl.transforms.base.wdlom2wom.graph.renaming.GraphIdentifierLookupRenamer.ops._
 import wdl.transforms.base.wdlom2wom.graph.renaming._
+import org.slf4j.LoggerFactory
 
 object WorkflowDefinitionElementToWomWorkflowDefinition extends Util {
 
@@ -32,6 +33,9 @@ object WorkflowDefinitionElementToWomWorkflowDefinition extends Util {
               valueEvaluator: ValueEvaluator[ExpressionElement]): ErrorOr[WorkflowDefinition] = {
 
     val a: WorkflowDefinitionConvertInputs = eliminateInputDependencies(b)
+
+    val log = LoggerFactory.getLogger("Workflow Definition Logger")
+    log.info(s"INPUT ELEMENTS FOR WORKFLOW $a")
 
     // Make the set of workflow graph elements, including:
     // - Top-level graph elements

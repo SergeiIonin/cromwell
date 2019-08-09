@@ -25,6 +25,7 @@ import wdl.transforms.base.wdlom2wom.expression.renaming.IdentifierLookupRenamer
 import wdl.transforms.base.wdlom2wom.expression.renaming.expressionEvaluator
 import wdl.model.draft3.graph.expression.WomTypeMaker.ops._
 import wdl.transforms.base.linking.typemakers._
+import org.slf4j.LoggerFactory
 
 
 object TaskDefinitionElementToWomTaskDefinition extends Util {
@@ -39,7 +40,18 @@ object TaskDefinitionElementToWomTaskDefinition extends Util {
     val a = eliminateInputDependencies(b)
     val inputElements = a.taskDefinitionElement.inputsSection.map(_.inputDeclarations).getOrElse(Seq.empty)
 
+    val log = LoggerFactory.getLogger("Task Definition Logger")
+    log.info(s"INPUTS SECTION FOR TASK.")
+    def getInputsSection() = {
+      b.taskDefinitionElement.inputsSection.map(_.inputDeclarations.map(_.name)).getOrElse(Seq.empty).foreach(println(_))
+    }
+    getInputsSection()
+    log.info(s"TASK DEFINITION ELEMENTS ELEMENTS FOR TASK $a")
+    log.info(s"INPUT ELEMENTS FOR TASK $inputElements")
+
     val declarations = a.taskDefinitionElement.declarations
+    log.info(s"INPUT DECLARATIONS FOR TASK $declarations")
+
     val outputElements = a.taskDefinitionElement.outputsSection.map(_.outputs).getOrElse(Seq.empty)
 
     val conversion = (
