@@ -76,7 +76,7 @@ object TaskDefinitionElementToWomTaskDefinition extends Util {
       }
     }
 
-    conversion.contextualizeErrors(s"process task definition '${b.taskDefinitionElement.name}'")
+    conversion.contextualizeErrors(s"process task definition '${a.taskDefinitionElement.name}'") // change for a?
   }
 
   private def validateParameterMetaEntries(parameterMetaSectionElement: Option[ParameterMetaSectionElement], inputs: Option[InputsSectionElement], outputs: Option[OutputsSectionElement]): ErrorOr[Unit] = {
@@ -103,7 +103,7 @@ object TaskDefinitionElementToWomTaskDefinition extends Util {
 
     val inputElementsWithUpstreams: Seq[NewInputElementsSet] = a.taskDefinitionElement.inputsSection.map(_.inputDeclarations).getOrElse(Seq.empty) collect {
       case ide @ InputDeclarationElement(typeElement,name, Some(expression)) if expression.expressionConsumedValueHooks.nonEmpty =>
-        val input = InputDeclarationElement(OptionalTypeElement(typeElement), name, None)
+        val input = InputDeclarationElement(OptionalTypeElement(typeElement), s"__$name", None) // CHANGED!
 
         val selecterExpression = SelectFirst(ArrayLiteral(Seq(IdentifierLookup(name), expression)))
         val intermediate = IntermediateValueDeclarationElement(typeElement, s"__$name", selecterExpression)
