@@ -103,9 +103,9 @@ object TaskDefinitionElementToWomTaskDefinition extends Util {
 
     val inputElementsWithUpstreams: Seq[NewInputElementsSet] = a.taskDefinitionElement.inputsSection.map(_.inputDeclarations).getOrElse(Seq.empty) collect {
       case ide @ InputDeclarationElement(typeElement,name, Some(expression)) if expression.expressionConsumedValueHooks.nonEmpty =>
-        val input = InputDeclarationElement(OptionalTypeElement(typeElement), s"__$name", None) // CHANGED!
+        val input = InputDeclarationElement(OptionalTypeElement(typeElement), s"__$name", None) // CHANGED! was name
 
-        val selecterExpression = SelectFirst(ArrayLiteral(Seq(IdentifierLookup(name), expression)))
+        val selecterExpression = SelectFirst(ArrayLiteral(Seq(IdentifierLookup(s"__$name"), expression))) // CHANGED! was name
         val intermediate = IntermediateValueDeclarationElement(typeElement, s"__$name", selecterExpression)
 
         NewInputElementsSet(ide, input, intermediate)
