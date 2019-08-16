@@ -69,13 +69,18 @@ object FileElementToWomBundle {
         }
       }
 
-      val taskDefValidation: ErrorOr[Vector[TaskDefinitionElement]] = a.fileElement.tasks.toVector.validNel
+      val taskDefValidation: ErrorOr[Vector[TaskDefinitionElement]] = a.fileElement.tasks.toVector.validNel // this lines seems to be similar in task and workflow
       val importsValidation: ErrorOr[Vector[WomBundle]] = a.fileElement.imports.toVector.traverse { importWomBundle(_, a.workflowOptionsJson, a.importResolvers, a.languageFactories) }
 
-      (importsValidation flatMap { imports =>
+      //println(structsValidation0.getClass)
+
+      val res = (importsValidation flatMap { imports =>
         val structsValidation: ErrorOr[Map[String, WomType]] = StructEvaluation.convert(StructEvaluationInputs(a.fileElement.structs, imports.flatMap(_.typeAliases).toMap))
-        (taskDefValidation, structsValidation) flatMapN { (tasks, structs) => toWorkflowInner(imports, tasks, structs) }
+        (taskDefValidation, structsValidation) flatMapN { (tasks, structs) =>
+          toWorkflowInner(imports, tasks, structs) }
       }).toEither
+      println(res.getClass)
+      res // difference in primaryCallable and allCallables (the workflow case contains yet another tuple with graph and more)
     }
   }
 

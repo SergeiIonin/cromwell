@@ -314,11 +314,89 @@ trait StandardAsyncExecutionActor
     jobPaths.callExecutionRoot.resolve(relativePath)
   }
 
+  def getinstantiatedCommand = instantiatedCommand
+
   /** A bash script containing the custom preamble, the instantiated command, and output globbing behavior. */
   def commandScriptContents: ErrorOr[String] = {
+    val iC:InstantiatedCommand = { // todo write it back to lazy val
+      val callable = jobDescriptor.taskCall.callable
+
+      // Replace input files with the ad hoc updated version
+      def adHocFilePreProcessor(in: WomEvaluatedCallInputs): Try[WomEvaluatedCallInputs] = {
+        localizedAdHocValues.toTry("Error evaluating ad hoc files") map { adHocFiles =>
+          in map {
+            case (inputDefinition, originalWomValue) =>
+              inputDefinition -> adHocFiles.collectFirst({
+                case AsAdHocValue(AdHocValue(originalWomFile, _, Some(inputName))) if inputName == inputDefinition.localName.value => originalWomFile
+                case AsLocalizedAdHocValue(LocalizedAdHocValue(AdHocValue(originalWomFile, _, Some(inputName)), localizedPath)) if inputName == inputDefinition.localName.value =>
+                  originalWomFile.mapFile(_ => localizedPath.pathAsString)
+              }).getOrElse(originalWomValue)
+          }
+        }
+      }
+
+      // Gets the inputs that will be mutated by instantiating the command.
+      def mutatingPreProcessor(in: WomEvaluatedCallInputs): Try[WomEvaluatedCallInputs] = {
+        for {
+          commandLineProcessed <- localizedInputs
+          adHocProcessed <- adHocFilePreProcessor(commandLineProcessed)
+        } yield adHocProcessed
+      }
+
+     val init = mutatingPreProcessor(jobDescriptor.evaluatedTaskInputs).toErrorOr
+      println(init.getClass)
+
+      val instantiatedCommandValidation = Command.instantiate(
+        jobDescriptor,
+        backendEngineFunctions,
+        mutatingPreProcessor,
+        commandLineValueMapper,
+        runtimeEnvironment
+      )
+
+      def makeStringKeyedMap(list: List[(LocalName, WomValue)]): Map[String, WomValue] = list.toMap map { case (k, v) => k.value -> v }
+
+      val command = instantiatedCommandValidation flatMap { instantiatedCommand =>
+        val valueMappedPreprocessedInputs = instantiatedCommand.valueMappedPreprocessedInputs |> makeStringKeyedMap
+
+        val adHocFileCreationSideEffectFiles: ErrorOr[List[CommandSetupSideEffectFile]] = localizedAdHocValues map { _.map(adHocValueToCommandSetupSideEffectFile) }
+
+        def evaluateEnvironmentExpression(nameAndExpression: (String, WomExpression)): ErrorOr[(String, String)] = {
+          val (name, expression) = nameAndExpression
+          expression.evaluateValue(valueMappedPreprocessedInputs, backendEngineFunctions) map { name -> _.valueString }
+        }
+
+        val environmentVariables = callable.environmentExpressions.toList traverse evaluateEnvironmentExpression
+
+        // Build a list of functions from a CommandTaskDefinition to an Option[WomExpression] representing a possible
+        // redirection or override of the filename of a redirection. Evaluate that expression if present and stringify.
+        val List(stdinRedirect, stdoutOverride, stderrOverride) = List[CommandTaskDefinition => Option[WomExpression]](
+          _.stdinRedirection, _.stdoutOverride, _.stderrOverride) map {
+          _.apply(callable).traverse[ErrorOr, String] { _.evaluateValue(valueMappedPreprocessedInputs, backendEngineFunctions) map { _.valueString} }
+        }
+
+        (adHocFileCreationSideEffectFiles, environmentVariables, stdinRedirect, stdoutOverride, stderrOverride) mapN {
+          (adHocFiles, env, in, out, err) =>
+            instantiatedCommand.copy(
+              createdFiles = instantiatedCommand.createdFiles ++ adHocFiles, environmentVariables = env.toMap,
+              evaluatedStdinRedirection = in, evaluatedStdoutOverride = out, evaluatedStderrOverride = err)
+        }: ErrorOr[InstantiatedCommand]
+      }
+
+      // TODO CWL: Is throwing an exception the best way to indicate command generation failure?
+      command.toTry match {
+        case Success(ic) => ic
+        case Failure(e) => throw new Exception("Failed command instantiation", e)
+      }
+    }
+    println(iC.getClass)
+
+
+
+
     val commandString = instantiatedCommand.commandString
     val commandStringAbbreviated = StringUtils.abbreviateMiddle(commandString, "...", abbreviateCommandLength)
-    jobLogger.info(s"`$commandStringAbbreviated`")
+    jobLogger.info(s"`$commandStringAbbreviated` this is")
     tellMetadata(Map(CallMetadataKeys.CommandLine -> commandStringAbbreviated))
 
     val cwd = commandDirectory
@@ -508,7 +586,7 @@ trait StandardAsyncExecutionActor
   protected def isAdHocFile(womFile: WomFile) = asAdHocFile(womFile).isDefined
 
   /** The instantiated command. */
-  lazy val instantiatedCommand: InstantiatedCommand = {
+  def instantiatedCommand: InstantiatedCommand = { // todo write it back to lazy val
     val callable = jobDescriptor.taskCall.callable
 
     // Replace input files with the ad hoc updated version

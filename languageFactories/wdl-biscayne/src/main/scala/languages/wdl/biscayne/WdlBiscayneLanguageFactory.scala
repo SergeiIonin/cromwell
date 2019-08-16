@@ -54,7 +54,7 @@ class WdlBiscayneLanguageFactory(override val config: Config) extends LanguageFa
     val checkEnabled: CheckedAtoB[FileStringParserInput, FileStringParserInput] = CheckedAtoB.fromCheck(x => enabledCheck map(_ => x))
     val checkEnabledNstringToAst = checkEnabled andThen stringToAst
     val run1 = checkEnabledNstringToAst.run(FileStringParserInput(workflowSource, "input.wdl"))
-    run1.getClass
+    //run1.getClass
     val stringToAstNwrapAst = checkEnabledNstringToAst andThen wrapAst
     val run2 = stringToAstNwrapAst.run(FileStringParserInput(workflowSource, "input.wdl"))
     val wrapAstNastToFileElement = stringToAstNwrapAst andThen astToFileElement
@@ -62,7 +62,15 @@ class WdlBiscayneLanguageFactory(override val config: Config) extends LanguageFa
 
     println(run1.getClass.toString + run2.getClass.toString + run3.getClass.toString)
 
-    val converter: CheckedAtoB[FileStringParserInput, WomBundle] = wrapAstNastToFileElement.map(FileElementToWomBundleInputs(_, workflowOptionsJson, convertNestedScatterToSubworkflow, importResolvers, languageFactories, workflowDefinitionElementToWomWorkflowDefinition, taskDefinitionElementToWomTaskDefinition)) andThen fileElementToWomBundle
+    val wFlow2Wom = workflowDefinitionElementToWomWorkflowDefinition.second
+    println(wFlow2Wom.getClass)
+
+    val converter: CheckedAtoB[FileStringParserInput, WomBundle] = wrapAstNastToFileElement.map(FileElementToWomBundleInputs(_, workflowOptionsJson,
+      convertNestedScatterToSubworkflow,
+      importResolvers,
+      languageFactories,
+      workflowDefinitionElementToWomWorkflowDefinition,
+      taskDefinitionElementToWomTaskDefinition)) andThen fileElementToWomBundle
 
     //val converter: CheckedAtoB[FileStringParserInput, WomBundle] = checkEnabled andThen stringToAst andThen wrapAst andThen astToFileElement.map(FileElementToWomBundleInputs(_, workflowOptionsJson, convertNestedScatterToSubworkflow, importResolvers, languageFactories, workflowDefinitionElementToWomWorkflowDefinition, taskDefinitionElementToWomTaskDefinition)) andThen fileElementToWomBundle
     converter.run(FileStringParserInput(workflowSource, "input.wdl"))
