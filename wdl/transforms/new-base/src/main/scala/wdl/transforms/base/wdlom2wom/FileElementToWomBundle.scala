@@ -16,6 +16,8 @@ import wdl.model.draft3.elements._
 import wdl.transforms.base.wdlom2wom.StructEvaluation.StructEvaluationInputs
 import wdl.transforms.base.wdlom2wom.TaskDefinitionElementToWomTaskDefinition.TaskDefinitionElementToWomInputs
 import wdl.transforms.base.wdlom2wom.WorkflowDefinitionElementToWomWorkflowDefinition.WorkflowDefinitionConvertInputs
+import wom.SourceFileLocation  // add it for your fix
+//import wom.SourceFileLocation
 import wom.callable.{Callable, CallableTaskDefinition, WorkflowDefinition}
 import wom.core.WorkflowOptionsJson
 import wom.executable.WomBundle
@@ -32,7 +34,6 @@ object FileElementToWomBundle {
       def toWorkflowInner(imports: Vector[WomBundle], tasks: Vector[TaskDefinitionElement], structs: Map[String, WomType]): ErrorOr[WomBundle] = {
 
         val allStructs = structs ++ imports.flatMap(_.typeAliases)
-
         val localTasksValidation: ErrorOr[Map[String, Callable]] = {
           tasks.traverse { taskDefinition =>
             a.taskConverter
@@ -40,16 +41,15 @@ object FileElementToWomBundle {
               .map(t => t.name -> t).toValidated
           }.map(_.toMap)
         }
-
         localTasksValidation flatMap { localTaskMapping =>
 
           val workflowsValidation: ErrorOr[Vector[WorkflowDefinition]] = {
             a.fileElement.workflows.toVector.traverse { workflowDefinition =>
 
               val convertInputs = WorkflowDefinitionConvertInputs(workflowDefinition,
-                                                                  allStructs,
-                                                                  localTaskMapping ++ imports.flatMap(_.allCallables),
-                                                                  a.convertNestedScatterToSubworkflow)
+                allStructs,
+                localTaskMapping ++ imports.flatMap(_.allCallables),
+                a.convertNestedScatterToSubworkflow)
               a.workflowConverter.run(convertInputs).toValidated
             }
           }
@@ -67,19 +67,97 @@ object FileElementToWomBundle {
             WomBundle(primary, bundledCallableMap, allStructs)
           }
         }
+
+        //
+        def localTaskValidator(x: FileElementToWomBundleInputs): ErrorOr[WomBundle] = {
+          val localTasksValidation: ErrorOr[Map[String, Callable]] = {
+            tasks.traverse { taskDefinition =>
+              x.taskConverter
+                .run(TaskDefinitionElementToWomInputs(taskDefinition, structs))
+                .map(t => t.name -> t).toValidated
+            }.map(_.toMap)
+          }
+          localTasksValidation flatMap { localTaskMapping =>
+
+            val workflowsValidation: ErrorOr[Vector[WorkflowDefinition]] = {
+              x.fileElement.workflows.toVector.traverse { workflowDefinition =>
+
+                val convertInputs = WorkflowDefinitionConvertInputs(workflowDefinition,
+                  allStructs,
+                  localTaskMapping ++ imports.flatMap(_.allCallables),
+                  x.convertNestedScatterToSubworkflow)
+                x.workflowConverter.run(convertInputs).toValidated
+              }
+            }
+            workflowsValidation map { workflows =>
+              val primary: Option[Callable] =
+                if (workflows.size == 1) {
+                  workflows.headOption
+                } else if (workflows.isEmpty && tasks.size == 1) {
+                  localTaskMapping.headOption map { case (_, callable) => callable }
+                } else None
+
+              val bundledCallableMap = (localTaskMapping.values.toSet ++ workflows).map(c => c.name -> c).toMap
+
+              WomBundle(primary, bundledCallableMap, allStructs)
+            }
+          }
+        }
+
+        if (a.fileElement.workflows.isEmpty) {
+          val mockingGraphElements: Set[WorkflowGraphElement] = Set(CallElement(a.fileElement.tasks.head.name,
+            None,
+            Vector.empty,
+            None,
+            Some(SourceFileLocation(4))
+            )
+          )
+
+          val mockingWorkflows: Seq[WorkflowDefinitionElement] = Seq(WorkflowDefinitionElement("mockingWorkflows",
+            None,
+            mockingGraphElements,
+            None,
+            None,
+            None,
+            Some(SourceFileLocation(3))
+          )
+          )
+          val mockingFileElement = a.fileElement.copy(workflows = mockingWorkflows)
+          val aa: FileElementToWomBundleInputs = a.copy(fileElement = mockingFileElement)
+          localTaskValidator(aa)
+        }
+        else localTaskValidator(a)
+        //
       }
 
       val taskDefValidation: ErrorOr[Vector[TaskDefinitionElement]] = a.fileElement.tasks.toVector.validNel // this lines seems to be similar in task and workflow
       val importsValidation: ErrorOr[Vector[WomBundle]] = a.fileElement.imports.toVector.traverse { importWomBundle(_, a.workflowOptionsJson, a.importResolvers, a.languageFactories) }
+      // at this point importsValidation == Valid(Vector())
 
       //println(structsValidation0.getClass)
+      def structsValidationCopy(x: ErrorOr[Map[String, WomType]]) = x
+      var structsValidationCpy: ErrorOr[Map[String, WomType]] = null
+      var importsCpy: Vector[WomBundle] = null
 
       val res = (importsValidation flatMap { imports =>
         val structsValidation: ErrorOr[Map[String, WomType]] = StructEvaluation.convert(StructEvaluationInputs(a.fileElement.structs, imports.flatMap(_.typeAliases).toMap))
+        structsValidationCpy = structsValidationCopy(structsValidation)
+        importsCpy = imports
         (taskDefValidation, structsValidation) flatMapN { (tasks, structs) =>
           toWorkflowInner(imports, tasks, structs) }
       }).toEither
-      println(res.getClass)
+      println(res.getClass + structsValidationCpy.getClass.toString)
+
+      /*val resSynt = toWorkflowInner2(importsCpy, taskDefValidation, structsValidationCpy)
+      println(resSynt.getClass)*/
+
+      //val xx: ErrorOr[Vector[WorkflowDefinition]] = null
+
+       val myRes = (taskDefValidation, structsValidationCpy) flatMapN {
+         (tasks, structs) =>
+           toWorkflowInner(importsCpy, tasks, structs)
+       }
+      println(myRes.getClass)
       res // difference in primaryCallable and allCallables (the workflow case contains yet another tuple with graph and more)
     }
   }
