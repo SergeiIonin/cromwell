@@ -78,7 +78,23 @@ object Executable {
       case _ => Option.empty[(OutputPort, ResolvedExecutableInput)].validIOChecked
     }).map(_.flatten).map(_.toMap)
 
-    val unwantedInputs = if (strictValidation) inputCoercionMap.keySet.diff(graph.externalInputNodes.map(_.nameInInputSet)) else Set.empty
+    //
+    val isComplexAddInputNodes = graph.externalInputNodes.map(_.nameInInputSet).mkString.contains(".")
+    val isComplexCoercionMap = inputCoercionMap.keySet.mkString.contains(".")
+
+    val keysetFict = graph.externalInputNodes.map(_.nameInInputSet).map(x => x.substring(x.lastIndexOf(".")+1, x.length))
+
+    val unwantedInputs  = if (strictValidation) {
+      if (isComplexAddInputNodes && !isComplexCoercionMap)  inputCoercionMap.keySet.diff(keysetFict)
+      else inputCoercionMap.keySet.diff(graph.externalInputNodes.map(_.nameInInputSet)) // this is the simple case
+    }
+    else Set.empty
+    //
+
+    //
+    //val unwantedInputs = if (strictValidation) inputCoercionMap.keySet.diff(graph.externalInputNodes.map(_.nameInInputSet)) else Set.empty
+    // val unwantedInputs = Set.empty todo remove later, this is illegal!
+
 
     val allInputs = inputCoercionMap
 
