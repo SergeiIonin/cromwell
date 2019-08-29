@@ -17,6 +17,7 @@ import wom.graph.CallNode._
 import wom.graph.GraphNode.GeneratedNodeAndNewNodes
 import wom.graph.GraphNodePort._
 import wom.graph.expression.{ExpressionNode, ExpressionNodeLike}
+import wom.types.WomOptionalType
 import wom.values.{WomEvaluatedCallInputs, WomValue}
 
 import scala.concurrent.ExecutionContext
@@ -125,7 +126,8 @@ object TaskCall {
         case RequiredInputDefinition(name, womType, valueMapper, _) => Some(RequiredGraphInputNode(identifier(name), womType, name.value, valueMapper))
         case OverridableInputDefinitionWithDefault(name, womType, default, valueMapper, _) => Some(OptionalGraphInputNodeWithDefault(identifier(name), womType, default, name.value, valueMapper))
         case OptionalInputDefinition(name, womType, valueMapper, _) => Some(OptionalGraphInputNode(identifier(name), womType, name.value, valueMapper))
-        case FixedInputDefinitionWithDefault(name, womType, default, valueMapper, _) => Some(OptionalGraphInputNodeWithDefault(identifier(name), womType, default, name.value, valueMapper))
+        case FixedInputDefinitionWithDefault(name, womType, _, valueMapper, _) => Some(OptionalGraphInputNode(identifier(name), womType.asInstanceOf[WomOptionalType], name.value, valueMapper))
+        //case FixedInputDefinitionWithDefault(name, womType, default, valueMapper, _) => Some(OptionalGraphInputNodeWithDefault(identifier(name), womType, default, name.value, valueMapper))
         //case _: FixedInputDefinitionWithDefault => None
       }
 

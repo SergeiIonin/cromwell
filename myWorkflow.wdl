@@ -10,7 +10,7 @@ task WdlKindaFixedAssign {
     Int? ths = runtime_cpu
   }
   command {
-    echo ${runtime_cpu}, ${ths}
+    echo ${ths}
   }
   output {
     File out = stdout()
