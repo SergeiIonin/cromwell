@@ -37,11 +37,19 @@ class WdlBiscayneLanguageFactory(override val config: Config) extends LanguageFa
 
     val factories: List[LanguageFactory] = List(this)
 
-    val checked: Checked[ValidatedWomNamespace] = for {
-      _ <- enabledCheck
-      bundle <- getWomBundle(workflowSource, workflowSourceOrigin = None, source.workflowOptions.asPrettyJson, importResolvers, factories)
-      executable <- createExecutable(bundle, source.inputsJson, ioFunctions)
-    } yield executable
+    //
+    val bundle = getWomBundle(workflowSource, workflowSourceOrigin = None, source.workflowOptions.asPrettyJson, importResolvers, factories)
+    println(bundle.getClass)
+    //
+
+    val checked: Checked[ValidatedWomNamespace] = enabledCheck
+      .flatMap((_: Unit) =>
+        getWomBundle(workflowSource, workflowSourceOrigin = None, source.workflowOptions.asPrettyJson, importResolvers, factories)
+          .flatMap((bundle: WomBundle) =>
+            createExecutable(bundle, source.inputsJson, ioFunctions)
+              .map((executable: ValidatedWomNamespace) => executable)
+          )
+      )
 
     fromEither[IO](checked)
 
@@ -60,11 +68,14 @@ class WdlBiscayneLanguageFactory(override val config: Config) extends LanguageFa
   }
 
   override def createExecutable(womBundle: WomBundle, inputsJson: WorkflowJson, ioFunctions: IoFunctionSet): Checked[ValidatedWomNamespace] = {
-    for {
-      _ <- enabledCheck
-      executable <- womBundle.toWomExecutable(Option(inputsJson), ioFunctions, strictValidation)
-      validated <- LanguageFactoryUtil.validateWomNamespace(executable, ioFunctions)
-    } yield validated
+    enabledCheck
+      .flatMap(_ =>
+        womBundle.toWomExecutable(Option(inputsJson), ioFunctions, strictValidation)
+          .flatMap(executable =>
+            LanguageFactoryUtil.validateWomNamespace(executable, ioFunctions)
+              .map(validated => validated)
+          )
+      )
   }
 
   override def looksParsable(content: String): Boolean = LanguageFactoryUtil.simpleLooksParseable(List("version development"), List("#"))(content)

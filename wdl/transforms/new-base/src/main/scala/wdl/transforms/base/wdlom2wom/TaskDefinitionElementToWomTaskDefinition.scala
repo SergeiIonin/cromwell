@@ -94,7 +94,7 @@ object TaskDefinitionElementToWomTaskDefinition extends Util {
         val input = InputDeclarationElement(OptionalTypeElement(typeElement), name, None)
 
         val selecterExpression = SelectFirst(ArrayLiteral(Seq(IdentifierLookup(name), expression)))
-        val intermediate = IntermediateValueDeclarationElement(typeElement, s"__$name", selecterExpression)
+        val intermediate = IntermediateValueDeclarationElement(typeElement, s"__$name", selecterExpression) // changed!
 
         NewInputElementsSet(ide, input, intermediate)
     }

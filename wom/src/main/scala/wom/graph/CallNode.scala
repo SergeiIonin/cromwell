@@ -125,7 +125,8 @@ object TaskCall {
         case RequiredInputDefinition(name, womType, valueMapper, _) => Some(RequiredGraphInputNode(identifier(name), womType, name.value, valueMapper))
         case OverridableInputDefinitionWithDefault(name, womType, default, valueMapper, _) => Some(OptionalGraphInputNodeWithDefault(identifier(name), womType, default, name.value, valueMapper))
         case OptionalInputDefinition(name, womType, valueMapper, _) => Some(OptionalGraphInputNode(identifier(name), womType, name.value, valueMapper))
-        case _: FixedInputDefinitionWithDefault => None
+        case FixedInputDefinitionWithDefault(name, womType, default, valueMapper, _) => Some(OptionalGraphInputNodeWithDefault(identifier(name), womType, default, name.value, valueMapper))
+        //case _: FixedInputDefinitionWithDefault => None
       }
 
       newNode match {

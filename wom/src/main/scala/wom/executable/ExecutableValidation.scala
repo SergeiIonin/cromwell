@@ -13,8 +13,19 @@ private [executable] object ExecutableValidation {
                                               inputParsingFunction: InputParsingFunction,
                                               parseGraphInputs: (Graph, Map[String, DelayedCoercionFunction], IoFunctionSet) => IOChecked[ResolvedExecutableInputs],
                                               inputFile: Option[String],
-                                              ioFunctions: IoFunctionSet): IOChecked[Executable] = for {
-    parsedInputs <- inputFile.map(inputParsingFunction).map(_.toIOChecked).getOrElse(IOChecked.pure(Map.empty[String, DelayedCoercionFunction]))
-    validatedInputs <- parseGraphInputs(entryPoint.graph, parsedInputs, ioFunctions)
-  } yield Executable(entryPoint, validatedInputs)
+                                              ioFunctions: IoFunctionSet): IOChecked[Executable] = {
+ /*   val parsedInputs = inputFile.map(inputParsingFunction).map(_.toIOChecked).getOrElse(IOChecked.pure(Map.empty[String, DelayedCoercionFunction]))
+    println(parsedInputs.getClass)
+    val validatedInputs = parseGraphInputs(entryPoint.graph, parsedInputs, ioFunctions)
+    println(validatedInputs.getClass)*/
+    inputFile.map(inputParsingFunction).map(_.toIOChecked).getOrElse(IOChecked.pure(Map.empty[String, DelayedCoercionFunction]))
+      .flatMap(parsedInputs =>
+        parseGraphInputs(entryPoint.graph, parsedInputs, ioFunctions)
+          .map(validatedInputs => {
+            val inputs = validatedInputs
+            println(inputs)
+            Executable(entryPoint, validatedInputs)
+          })
+      )
+  }
 }
