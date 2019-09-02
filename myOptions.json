@@ -1,0 +1,6 @@
+{
+"final_workflow_outputs_dir":"s3://ionin-test-bucket/wf_results",
+"use_relative_output_paths":true,
+"final_workflow_log_dir":"s3://ionin-test-bucket/wf_logs",
+"final_call_logs_dir":"s3://ionin-test-bucket/cromwell/wf_logs"
+}
