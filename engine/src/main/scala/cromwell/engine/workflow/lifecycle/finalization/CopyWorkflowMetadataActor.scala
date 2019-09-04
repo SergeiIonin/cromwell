@@ -13,19 +13,21 @@ import cromwell.core.path.{Path, PathCopier, PathFactory}
 import cromwell.engine.EngineWorkflowDescriptor
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
 import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
+import cromwell.services.metadata.MetadataService.MetadataLookupResponseWithRequester
+import cromwell.webservice.metadata.MetadataBuilderActor
 import wom.values.{WomSingleFile, WomValue}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-object CopyWorkflowOutputsActor {
-  def props(workflowId: WorkflowId, ioActor: ActorRef, workflowDescriptor: EngineWorkflowDescriptor, workflowOutputs: CallOutputs,
+object CopyWorkflowMetadataActor {
+  def props(workflowId: WorkflowId, ioActor: ActorRef, serviceRegistryActor: ActorRef, workflowDescriptor: EngineWorkflowDescriptor, workflowOutputs: CallOutputs,
             initializationData: AllBackendInitializationData) = Props(
-    new CopyWorkflowOutputsActor(workflowId, ioActor, workflowDescriptor, workflowOutputs, initializationData)
+    new CopyWorkflowMetadataActor(workflowId, ioActor, serviceRegistryActor, workflowDescriptor, workflowOutputs, initializationData)
   ).withDispatcher(IoDispatcher)
 }
 
-class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: ActorRef, val workflowDescriptor: EngineWorkflowDescriptor, workflowOutputs: CallOutputs,
+class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: ActorRef, serviceRegistryActor: ActorRef, val workflowDescriptor: EngineWorkflowDescriptor, workflowOutputs: CallOutputs,
                                initializationData: AllBackendInitializationData)
   extends Actor with ActorLogging with PathFactory with AsyncIoActorClient {
   override lazy val ioCommandBuilder = GcsBatchCommandBuilder
@@ -46,9 +48,9 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
     }
   }
 
-  private def copyWorkflowOutputs(workflowOutputsFilePath: String): Future[Seq[Unit]] = {
-    val workflowOutputsPath = buildPath(workflowOutputsFilePath)
-    val outputFilePaths = getOutputFilePaths(workflowOutputsPath)
+  private def copyMetadataOutputs(workflowMetadataFilePath: String): Future[Seq[Unit]] = {
+    val workflowMetadataPath = buildPath(workflowMetadataFilePath)
+    val outputFilePaths = getOutputFilePaths(workflowMetadataPath)
 
     // Check if there are duplicated destination paths and throw an exception if that is the case.
     // This creates a map of destinations and source paths which point to them in cases where there are multiple
@@ -68,14 +70,22 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
           s" as multiple files will be copied to the same path: \n${formattedCollidingCopyOptions.mkString("\n")}")}
 
     val copies = outputFilePaths map {
-      case (srcPath, dstPath) => 
+      case (srcPath, dstPath) =>
         dstPath.createDirectories()
         asyncIo.copyAsync(srcPath, dstPath)
     }
-    
+
     Future.sequence(copies)
   }
 
+  private def getJsBundle(): Unit = {
+    val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
+    val query =
+    val eventList =
+    mba ! MetadataLookupResponseWithRequester(,,sender) // todo fill args
+  }
+
+  // todo looks like unused
   private def findFiles(values: Seq[WomValue]): Seq[WomSingleFile] = {
     values flatMap {
       _.collectAsSeq {
@@ -84,6 +94,7 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
     }
   }
 
+  // todo looks like unused
   private def getOutputFilePaths(workflowOutputsPath: Path): List[(Path, Path)] = {
 
     val useRelativeOutputPaths: Boolean = workflowDescriptor.getWorkflowOption(UseRelativeOutputPaths).contains("true")
@@ -102,7 +113,7 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
     lazy val truncateRegex = ".*/call-.*/execution/".r
     val outputFileDestinations = rootAndFiles flatMap {
       case (workflowRoot, outputs) =>
-        outputs map { output => 
+        outputs map { output =>
           val outputPath = PathFactory.buildPath(output, pathBuilders)
           outputPath -> {
             if (useRelativeOutputPaths) {
@@ -130,11 +141,11 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
   }
 
   /**
-    * Happens after everything else runs
-    */
+   * Happens after everything else runs
+   */
   final def afterAll()(implicit ec: ExecutionContext): Future[FinalizationResponse] = {
-    workflowDescriptor.getWorkflowOption(FinalWorkflowOutputsDir) match {
-      case Some(outputs) => copyWorkflowOutputs(outputs) map { _ => FinalizationSuccess }
+    workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
+      case Some(metadata) => copyMetadataOutputs(metadata) map { _ => FinalizationSuccess }
       case None => Future.successful(FinalizationSuccess)
     }
   }

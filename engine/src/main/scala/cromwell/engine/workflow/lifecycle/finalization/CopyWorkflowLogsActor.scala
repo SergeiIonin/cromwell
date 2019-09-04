@@ -33,6 +33,7 @@ class CopyWorkflowLogsActor(override val serviceRegistryActor: ActorRef, overrid
   implicit val ec = context.dispatcher
   
   def copyLog(src: Path, dest: Path, workflowId: WorkflowId) = {
+    log.info("CWLA, copyLog" + s"${self.path}")
     dest.parent.createPermissionedDirectories()
     // Send the workflowId as context along with the copy so we can update metadata when the response comes back
     sendIoCommandWithContext(GcsBatchCommandBuilder.copyCommand(src, dest, overwrite = true), workflowId)

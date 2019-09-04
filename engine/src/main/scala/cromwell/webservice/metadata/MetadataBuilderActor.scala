@@ -53,13 +53,13 @@ object MetadataBuilderActor {
   private val ShardKey = "shardIndex"
 
   /**
-    * Metadata for a call attempt
-    */
+   * Metadata for a call attempt
+   */
   private case class MetadataForAttempt(attempt: Int, metadata: JsObject)
 
   /**
-    * Metadata objects of all attempts for one shard
-    */
+   * Metadata objects of all attempts for one shard
+   */
   private case class MetadataForIndex(index: Int, metadata: List[JsObject])
 
   private def eventsToAttemptMetadata(subWorkflowMetadata: Map[String, JsValue])(attempt: Int, events: Seq[MetadataEvent]) = {
@@ -131,8 +131,8 @@ object MetadataBuilderActor {
   }
 
   /**
-    * Parse a Seq of MetadataEvent into a full Json metadata response.
-    */
+   * Parse a Seq of MetadataEvent into a full Json metadata response.
+   */
   private def parse(events: Seq[MetadataEvent], expandedValues: Map[String, JsValue]): JsObject = {
     JsObject(events.groupBy(_.key.workflowId.toString) safeMapValues parseWorkflowEvents(includeCallsIfEmpty = true, expandedValues))
   }
@@ -188,7 +188,7 @@ object MetadataBuilderActor {
       // The `get` on the `jobKey` is safe because execution events are all job-based. The outer `get` is safe because we already verified
       // the presence of this "grouping" attribute in this data set above.
       case (k, es) => es.collectFirst { case e if e.key.key == s"executionEvents[$k]:grouping" => JobKeyAndGrouping(e.key.jobKey.get, e.value.get.value) } get } map {
-        case (jkg, m) => jkg -> m.values.toList.flatten }
+      case (jkg, m) => jkg -> m.values.toList.flatten }
 
     // Tuplize the grouping function so it can operate on the List elements directly.
     val tupledGrouper = (makeSyntheticGroupedExecutionEvents _).tupled
@@ -233,7 +233,8 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     case Event(LogsResponse(w, l), _) =>
       target ! BuiltMetadataResponse(workflowMetadataResponse(w, l, includeCallsIfEmpty = false, Map.empty))
       allDone
-    case Event(MetadataLookupResponse(query, metadata), None) => processMetadataResponse(query, metadata)
+    case Event(MetadataLookupResponse(query, metadata), None) => processMetadataResponse(query, metadata) // todo add another case
+    case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester)
     case Event(_: ServiceRegistryFailure, _) =>
       target ! FailedMetadataResponse(new RuntimeException("Can't find metadata service"))
       allDone
@@ -281,10 +282,14 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     stay()
   }
 
-  def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue]) = {
+  def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue], req: ActorRef): State = {
     val groupedEvents = groupEvents(eventsList)
-    target ! BuiltMetadataResponse(processMetadataEvents(query, groupedEvents, expandedValues))
+    req ! BuiltMetadataResponse(processMetadataEvents(query, groupedEvents, expandedValues))
     allDone
+  }
+
+  def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue]): State = {
+    buildAndStop(query, eventsList, expandedValues, target)
   }
 
   def processMetadataResponse(query: MetadataQuery, eventsList: Seq[MetadataEvent]) = {
@@ -309,12 +314,37 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     }
   }
 
+  def processMetadataResponse(query: MetadataQuery, eventsList: Seq[MetadataEvent], req: ActorRef) = {
+    if (query.expandSubWorkflows) {
+      // Scan events for sub workflow ids
+      val subWorkflowIds = eventsList.collect({
+        case MetadataEvent(key, value, _) if key.key.endsWith(CallMetadataKeys.SubWorkflowId) => value map { _.value }
+      }).flatten.distinct
+
+      // If none is found just proceed to build metadata
+      if (subWorkflowIds.isEmpty) buildAndStop(query, eventsList, Map.empty, req)
+      else {
+        // Otherwise spin up a metadata builder actor for each sub workflow
+        subWorkflowIds foreach { subId =>
+          val subMetadataBuilder = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor), uniqueActorName)
+          subMetadataBuilder ! GetMetadataQueryAction(query.copy(workflowId = WorkflowId.fromString(subId)))
+        }
+        goto(WaitingForSubWorkflows) using Option(MetadataBuilderActorData(query, eventsList, Map.empty, subWorkflowIds.size))
+      }
+    } else {
+      buildAndStop(query, eventsList, Map.empty, req)
+    }
+  }
+
   def processMetadataEvents(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue]): JsObject = {
     // Should we send back some message ? Or even fail the request instead ?
     if (eventsList.isEmpty) JsObject(Map.empty[String, JsValue])
     else {
       query match {
-        case MetadataQuery(w, _, _, _, _, _) => workflowMetadataResponse(w, eventsList, includeCallsIfEmpty = true, expandedValues)
+        case MetadataQuery(w, _, _, _, _, _) => {
+          log.info("In the MDBA, processMetadataEvents")
+          workflowMetadataResponse(w, eventsList, includeCallsIfEmpty = true, expandedValues)
+        }
         case _ => MetadataBuilderActor.parse(eventsList, expandedValues)
       }
     }

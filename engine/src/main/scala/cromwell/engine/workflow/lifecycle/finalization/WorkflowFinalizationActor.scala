@@ -46,14 +46,16 @@ object WorkflowFinalizationActor {
             jobExecutionMap: JobExecutionMap,
             workflowOutputs: CallOutputs,
             initializationData: AllBackendInitializationData,
-            copyWorkflowOutputsActor: Option[Props]): Props = {
+            copyWorkflowOutputsActor: Option[Props],
+            copyWorkflowMetadataActor: Option[Props]): Props = {
     Props(new WorkflowFinalizationActor(
       workflowDescriptor,
       ioActor,
       jobExecutionMap,
       workflowOutputs,
       initializationData,
-      copyWorkflowOutputsActor
+      copyWorkflowOutputsActor,
+      copyWorkflowMetadataActor
     )).withDispatcher(EngineDispatcher)
   }
 }
@@ -63,7 +65,8 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
                                      jobExecutionMap: JobExecutionMap,
                                      workflowOutputs: CallOutputs,
                                      initializationData: AllBackendInitializationData,
-                                     copyWorkflowOutputsActorProps: Option[Props])
+                                     copyWorkflowOutputsActorProps: Option[Props],
+                                     copyWorkflowMetadataActor: Option[Props])
   extends WorkflowLifecycleActor[WorkflowFinalizationActorState] {
 
   override lazy val workflowIdForLogging = workflowDescriptor.possiblyNotRootWorkflowId
