@@ -207,7 +207,10 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
 
   when(Idle) {
     case Event(action: MetadataServiceAction, _) =>
+      log.info(s"MBA sends the message of type ${action.getClass}")
+      log.info(s"MBA contains the following fields ${action}")
       target = sender()
+      log.info(s"MBA sends the message to ${target}")
       serviceRegistryActor ! action
       goto(WaitingForMetadataService)
   }

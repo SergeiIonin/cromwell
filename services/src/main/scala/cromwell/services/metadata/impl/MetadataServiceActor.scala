@@ -109,7 +109,11 @@ final case class MetadataServiceActor(serviceConfig: Config, globalConfig: Confi
     case listen: Listen => writeActor forward listen
     case v: ValidateWorkflowIdInMetadata => validateWorkflowIdInMetadata(v.possibleWorkflowId, sender())
     case v: ValidateWorkflowIdInMetadataSummaries => validateWorkflowIdInMetadataSummaries(v.possibleWorkflowId, sender())
-    case action: ReadAction => readActor forward action
+    case action: ReadAction => {
+      log.info(s"ReadAction is IOf ${action.getClass}")
+      log.info(s"Sender of ReadAction is  ${sender()}")
+      readActor forward action
+    }
     case RefreshSummary => summaryActor foreach { _ ! SummarizeMetadata(metadataSummaryRefreshLimit, sender()) }
     case MetadataSummarySuccess => scheduleSummary()
     case MetadataSummaryFailure(t) =>

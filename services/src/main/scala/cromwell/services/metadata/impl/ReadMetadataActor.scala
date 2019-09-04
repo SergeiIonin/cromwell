@@ -36,7 +36,11 @@ class ReadMetadataActor(metadataReadTimeout: Duration) extends Actor with ActorL
   private def queryAndRespond(query: MetadataQuery): Unit = {
     val sndr = sender()
     queryMetadataEvents(query, metadataReadTimeout) onComplete {
-      case Success(m) => sndr ! MetadataLookupResponse(query, m)
+      case Success(m) => {
+        log.info(s"The query included in the MetadataLookupResponse is the $query")
+        log.info(s"The metadata included in the MetadataLookupResponse is the $m")
+        sndr ! MetadataLookupResponse(query, m)
+      }
       case Failure(t) => sndr ! MetadataServiceKeyLookupFailed(query, t)
     }
   }
