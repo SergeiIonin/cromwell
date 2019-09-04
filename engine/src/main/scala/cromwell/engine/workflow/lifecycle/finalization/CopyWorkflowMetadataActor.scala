@@ -2,8 +2,7 @@ package cromwell.engine.workflow.lifecycle.finalization
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.event.LoggingReceive
-import cromwell.backend.BackendLifecycleActor.BackendWorkflowLifecycleActorResponse
-import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationFailed, FinalizationResponse, FinalizationSuccess, Finalize}
+import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationResponse, FinalizationSuccess, Finalize}
 import cromwell.backend.{AllBackendInitializationData, BackendConfigurationDescriptor, BackendInitializationData, BackendLifecycleActorFactory}
 import cromwell.core.Dispatcher.IoDispatcher
 import cromwell.core.WorkflowOptions._
@@ -13,10 +12,16 @@ import cromwell.core.path.{Path, PathCopier, PathFactory}
 import cromwell.engine.EngineWorkflowDescriptor
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
 import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
-import cromwell.services.metadata.MetadataService.MetadataLookupResponseWithRequester
+import cromwell.services.MetadataServicesStore
+import cromwell.services.metadata.MetadataQuery
+import cromwell.services.metadata.MetadataService.{MetadataLookupResponseWithRequester, MetadataServiceKeyLookupFailed}
+import cromwell.services.metadata.impl.MetadataDatabaseAccess
 import cromwell.webservice.metadata.MetadataBuilderActor
+import cromwell.webservice.metadata.MetadataBuilderActor.BuiltMetadataResponse
+import spray.json.JsObject
 import wom.values.{WomSingleFile, WomValue}
 
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
@@ -29,24 +34,24 @@ object CopyWorkflowMetadataActor {
 
 class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: ActorRef, serviceRegistryActor: ActorRef, val workflowDescriptor: EngineWorkflowDescriptor, workflowOutputs: CallOutputs,
                                initializationData: AllBackendInitializationData)
-  extends Actor with ActorLogging with PathFactory with AsyncIoActorClient {
+  extends Actor with ActorLogging with PathFactory with AsyncIoActorClient with MetadataServicesStore with MetadataDatabaseAccess {
   override lazy val ioCommandBuilder = GcsBatchCommandBuilder
   implicit val ec = context.dispatcher
   override val pathBuilders = workflowDescriptor.pathBuilders
 
   override def receive = LoggingReceive {
-    case Finalize => performActionThenRespond(afterAll()(context.dispatcher), FinalizationFailed)(context.dispatcher)
+    case Finalize => sendJsBundleRequest //performActionThenRespond
+    case builtMetadataResponse: BuiltMetadataResponse => getJsBundle(builtMetadataResponse)
   }
 
-  private def performActionThenRespond(operation: => Future[BackendWorkflowLifecycleActorResponse],
-                                       onFailure: (Throwable) => BackendWorkflowLifecycleActorResponse)
-                                      (implicit ec: ExecutionContext) = {
-    val respondTo: ActorRef = sender
+ /* private def performActionThenRespond() = {
+    sendJsBundleRequest
+    /*val respondTo: ActorRef = sender
     operation onComplete {
       case Success(r) => respondTo ! r
       case Failure(t) => respondTo ! onFailure(t)
-    }
-  }
+    }*/
+  }*/
 
   private def copyMetadataOutputs(workflowMetadataFilePath: String): Future[Seq[Unit]] = {
     val workflowMetadataPath = buildPath(workflowMetadataFilePath)
@@ -78,11 +83,20 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
     Future.sequence(copies)
   }
 
-  private def getJsBundle(): Unit = {
+  private def sendJsBundleRequest(): Unit = {
     val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
-    val query =
-    val eventList =
-    mba ! MetadataLookupResponseWithRequester(,,sender) // todo fill args
+    val query = MetadataQuery(workflowId, None, None, None, None, false)
+    val timeout = FiniteDuration(30, "seconds")
+
+    queryMetadataEvents(query, timeout) onComplete {
+      case Success(m) => mba ! MetadataLookupResponseWithRequester(query, m, self)
+      case Failure(t) => mba ! MetadataServiceKeyLookupFailed(query, t)
+    }
+  }
+
+  private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse) = {
+    val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
+    log.info(s"CWMetadataActor, this is the jsObject $jsObject")
   }
 
   // todo looks like unused

@@ -66,7 +66,7 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
                                      workflowOutputs: CallOutputs,
                                      initializationData: AllBackendInitializationData,
                                      copyWorkflowOutputsActorProps: Option[Props],
-                                     copyWorkflowMetadataActor: Option[Props])
+                                     copyWorkflowMetadataActorProps: Option[Props])
   extends WorkflowLifecycleActor[WorkflowFinalizationActorState] {
 
   override lazy val workflowIdForLogging = workflowDescriptor.possiblyNotRootWorkflowId
@@ -102,7 +102,8 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
         } yield actor
       }
 
-      val engineFinalizationActor = Try { copyWorkflowOutputsActorProps.map(context.actorOf(_, "CopyWorkflowOutputsActor")).toList }
+      val engineFinalizationActor = Try {copyWorkflowOutputsActorProps.map(context.actorOf(_, "CopyWorkflowOutputsActor")).toList :::
+        copyWorkflowMetadataActorProps.map(context.actorOf(_, "CopyWorkflowMetadataActor")).toList}
 
       val allActors = for {
         backendFinalizationActorsFromTry <- backendFinalizationActors

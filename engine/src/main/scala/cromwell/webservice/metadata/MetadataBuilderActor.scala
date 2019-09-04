@@ -253,6 +253,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   }
 
   whenUnhandled {
+    case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester) // todo just a workaround, better goto WaitingForMetadataService
     case Event(message, data) =>
       log.error(s"Received unexpected message $message in state $stateName with data $data")
       stay()

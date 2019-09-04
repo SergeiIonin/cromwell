@@ -485,10 +485,11 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
         CopyWorkflowMetadataActor.props(workflowIdForLogging, ioActor, serviceRegistryActor, workflowDescriptor, workflowOutputs, stateData.initializationData)))
     }
 
-    val actorsList: List[Props] = actorsPropsOptionList.getOrElse(None)
+    val actorsList: List[Props] = actorsPropsOptionList.getOrElse(List(Props.empty))
 
     val copyWorkflowOutputsActorProps = Option(actorsList(0))
     val copyWorkflowMetadataActorProps = Option(actorsList(1))
+    log.info(s"WA in makeFinalizationActor, $copyWorkflowMetadataActorProps")
 
 
 
