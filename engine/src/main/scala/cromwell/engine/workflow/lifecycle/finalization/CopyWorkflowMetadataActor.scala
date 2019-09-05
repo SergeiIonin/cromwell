@@ -8,7 +8,7 @@ import cromwell.core.Dispatcher.IoDispatcher
 import cromwell.core.WorkflowOptions._
 import cromwell.core._
 import cromwell.core.io.AsyncIoActorClient
-import cromwell.core.path.{Path, PathCopier, PathFactory}
+import cromwell.core.path.{BetterFileMethods, Path, PathCopier, PathFactory}
 import cromwell.engine.EngineWorkflowDescriptor
 import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
 import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
@@ -41,7 +41,8 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
 
   override def receive = LoggingReceive {
     case Finalize => sendJsBundleRequest //performActionThenRespond
-    case builtMetadataResponse: BuiltMetadataResponse => getJsBundle(builtMetadataResponse)
+    //case builtMetadataResponse: BuiltMetadataResponse => getJsBundle(builtMetadataResponse)
+    case builtMetadataResponse: BuiltMetadataResponse => saveMetadataOutputs(builtMetadataResponse)
   }
 
  /* private def performActionThenRespond() = {
@@ -52,6 +53,46 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
       case Failure(t) => respondTo ! onFailure(t)
     }*/
   }*/
+
+  private def sendJsBundleRequest(): Unit = {
+    val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
+    val query = MetadataQuery(workflowId, None, None, None, None, false)
+    val timeout = FiniteDuration(30, "seconds")
+
+    queryMetadataEvents(query, timeout) onComplete {
+      case Success(m) => mba ! MetadataLookupResponseWithRequester(query, m, self)
+      case Failure(t) => mba ! MetadataServiceKeyLookupFailed(query, t)
+    }
+  }
+
+  private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = {
+    val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
+    log.info(s"CWMetadataActor, this is the jsObject $jsObject")
+    jsObject
+  }
+
+  private def saveMetadataOutputs(builtMetadataResponse: BuiltMetadataResponse) = {
+    val metadataContent = getJsBundle(builtMetadataResponse).toString
+    val operation = workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
+      case Some(outputs) => writeMetadataToPath(outputs, metadataContent) map { _ => FinalizationSuccess }
+      case None => Future.successful(FinalizationSuccess)
+    }
+    val respondTo: ActorRef = sender
+    operation onComplete {
+      case Success(r) => respondTo ! r
+      case Failure(t) => respondTo ! t
+    }
+
+  }
+
+  private def writeMetadataToPath(workflowMetadataFilePath: String, metadataContent: String): Future[Unit] = {
+    val workflowMetadataPath = buildPath(workflowMetadataFilePath)
+    val destFileName = workflowId.id + "_metadata.json"
+    val fullWorkflowMetadataPath = buildPath(workflowMetadataPath + "/" + destFileName)
+    log.info(s"In CWMA, this is the workflowMetadataPath $workflowMetadataPath")
+    log.info(s"In CWMA, here's the metadataContent $metadataContent")
+    asyncIo.writeAsync(fullWorkflowMetadataPath, metadataContent, BetterFileMethods.OpenOptions.default)
+  }
 
   private def copyMetadataOutputs(workflowMetadataFilePath: String): Future[Seq[Unit]] = {
     val workflowMetadataPath = buildPath(workflowMetadataFilePath)
@@ -81,22 +122,6 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
     }
 
     Future.sequence(copies)
-  }
-
-  private def sendJsBundleRequest(): Unit = {
-    val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
-    val query = MetadataQuery(workflowId, None, None, None, None, false)
-    val timeout = FiniteDuration(30, "seconds")
-
-    queryMetadataEvents(query, timeout) onComplete {
-      case Success(m) => mba ! MetadataLookupResponseWithRequester(query, m, self)
-      case Failure(t) => mba ! MetadataServiceKeyLookupFailed(query, t)
-    }
-  }
-
-  private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse) = {
-    val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
-    log.info(s"CWMetadataActor, this is the jsObject $jsObject")
   }
 
   // todo looks like unused

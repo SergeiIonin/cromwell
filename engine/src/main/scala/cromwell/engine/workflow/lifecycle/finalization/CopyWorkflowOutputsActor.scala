@@ -50,6 +50,8 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
     val workflowOutputsPath = buildPath(workflowOutputsFilePath)
     val outputFilePaths = getOutputFilePaths(workflowOutputsPath)
 
+    //log.info(s"In CWOA, workflowOutputsPath is ${workflowOutputsPath} and outputFilePaths is ${outputFilePaths}")
+
     // Check if there are duplicated destination paths and throw an exception if that is the case.
     // This creates a map of destinations and source paths which point to them in cases where there are multiple
     // source paths that point to the same destination.
