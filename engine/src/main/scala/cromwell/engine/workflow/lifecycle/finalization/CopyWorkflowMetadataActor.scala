@@ -2,7 +2,10 @@ package cromwell.engine.workflow.lifecycle.finalization
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.event.LoggingReceive
-import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationResponse, FinalizationSuccess, Finalize}
+import akka.pattern.ask
+import akka.util.Timeout
+import cromwell.backend.BackendLifecycleActor.BackendWorkflowLifecycleActorResponse
+import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationFailed, FinalizationResponse, FinalizationSuccess, Finalize}
 import cromwell.backend.{AllBackendInitializationData, BackendConfigurationDescriptor, BackendInitializationData, BackendLifecycleActorFactory}
 import cromwell.core.Dispatcher.IoDispatcher
 import cromwell.core.WorkflowOptions._
@@ -14,7 +17,7 @@ import cromwell.engine.backend.{BackendConfiguration, CromwellBackends}
 import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
 import cromwell.services.MetadataServicesStore
 import cromwell.services.metadata.MetadataQuery
-import cromwell.services.metadata.MetadataService.{MetadataLookupResponseWithRequester, MetadataServiceKeyLookupFailed}
+import cromwell.services.metadata.MetadataService.{MetadataLookupResponseWithRequester, MetadataServiceKeyLookupFailed, MetadataServiceResponse}
 import cromwell.services.metadata.impl.MetadataDatabaseAccess
 import cromwell.webservice.metadata.MetadataBuilderActor
 import cromwell.webservice.metadata.MetadataBuilderActor.BuiltMetadataResponse
@@ -40,21 +43,38 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
   override val pathBuilders = workflowDescriptor.pathBuilders
 
   override def receive = LoggingReceive {
-    case Finalize => sendJsBundleRequest //performActionThenRespond
+    case Finalize => performActionThenRespond(afterAll()(context.dispatcher), FinalizationFailed)(context.dispatcher) //sendJsBundleRequest
     //case builtMetadataResponse: BuiltMetadataResponse => getJsBundle(builtMetadataResponse)
     case builtMetadataResponse: BuiltMetadataResponse => saveMetadataOutputs(builtMetadataResponse)
   }
 
+
+  private def performActionThenRespond(operation: => Future[BackendWorkflowLifecycleActorResponse],
+                                       onFailure: (Throwable) => BackendWorkflowLifecycleActorResponse)
+                                      (implicit ec: ExecutionContext) = {
+    val respondTo: ActorRef = sender
+    operation onComplete {
+      case Success(r) => respondTo ! r
+      case Failure(t) => respondTo ! onFailure(t)
+    }
+  }
+
  /* private def performActionThenRespond() = {
-    sendJsBundleRequest
+    workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
+      case Some(metadata) => sendJsBundleRequest()
+        saveMetadataOutputs(metadata) map { _ => FinalizationSuccess }
+      case None => Future.successful(FinalizationSuccess)
+    }
+*/
     /*val respondTo: ActorRef = sender
     operation onComplete {
       case Success(r) => respondTo ! r
       case Failure(t) => respondTo ! onFailure(t)
-    }*/
+    }
   }*/
 
-  private def sendJsBundleRequest(): Unit = {
+  /*private def sendJsBundleRequest(): Unit = {
+
     val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
     val query = MetadataQuery(workflowId, None, None, None, None, false)
     val timeout = FiniteDuration(30, "seconds")
@@ -63,7 +83,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
       case Success(m) => mba ! MetadataLookupResponseWithRequester(query, m, self)
       case Failure(t) => mba ! MetadataServiceKeyLookupFailed(query, t)
     }
-  }
+  }*/
 
   private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = {
     val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
@@ -85,8 +105,8 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
 
   }
 
-  private def writeMetadataToPath(workflowMetadataFilePath: String, metadataContent: String): Future[Unit] = {
-    val workflowMetadataPath = buildPath(workflowMetadataFilePath)
+  private def writeMetadataToPath(workflowMetadataPath: Path, metadataContent: String): Future[Unit] = {
+    //val workflowMetadataPath = buildPath(workflowMetadataFilePath)
     val destFileName = workflowId.id + "_metadata.json"
     val fullWorkflowMetadataPath = buildPath(workflowMetadataPath + "/" + destFileName)
     log.info(s"In CWMA, this is the workflowMetadataPath $workflowMetadataPath")
@@ -94,7 +114,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
     asyncIo.writeAsync(fullWorkflowMetadataPath, metadataContent, BetterFileMethods.OpenOptions.default)
   }
 
-  private def copyMetadataOutputs(workflowMetadataFilePath: String): Future[Seq[Unit]] = {
+  private def saveMetadataOutputs(workflowMetadataFilePath: String) = {
     val workflowMetadataPath = buildPath(workflowMetadataFilePath)
     val outputFilePaths = getOutputFilePaths(workflowMetadataPath)
 
@@ -115,13 +135,21 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
         "Cannot copy output files to given final_workflow_outputs_dir" +
           s" as multiple files will be copied to the same path: \n${formattedCollidingCopyOptions.mkString("\n")}")}
 
-    val copies = outputFilePaths map {
-      case (srcPath, dstPath) =>
-        dstPath.createDirectories()
-        asyncIo.copyAsync(srcPath, dstPath)
+    val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
+    val query = MetadataQuery(workflowId, None, None, None, None, false)
+    val timeout = FiniteDuration(30, "seconds")
+    implicit val actorTimeout = Timeout(timeout)
+
+    queryMetadataEvents(query, timeout) onComplete {
+      case Success(m) => {
+        mba.ask(MetadataLookupResponseWithRequester(query, m, self)).mapTo[MetadataServiceResponse] collect {
+          case responce: BuiltMetadataResponse => saveMetadataOutputs(responce)
+          case _ => throw new Exception
+        }
+      }
+      case Failure(t) => mba ! MetadataServiceKeyLookupFailed(query, t)
     }
 
-    Future.sequence(copies)
   }
 
   // todo looks like unused
@@ -184,7 +212,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
    */
   final def afterAll()(implicit ec: ExecutionContext): Future[FinalizationResponse] = {
     workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
-      case Some(metadata) => copyMetadataOutputs(metadata) map { _ => FinalizationSuccess }
+      case Some(metadata) => saveMetadataOutputs(metadata) map { _ => FinalizationSuccess }
       case None => Future.successful(FinalizationSuccess)
     }
   }
