@@ -202,7 +202,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
 
   private var target: ActorRef = ActorRef.noSender
 
-  startWith(Idle, None)
+  startWith(WaitingForMetadataService, None)
   val tag = self.path.name
 
   when(Idle) {
@@ -253,7 +253,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   }
 
   whenUnhandled {
-    case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester) // todo just a workaround, better goto WaitingForMetadataService
+    //case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester) // todo just a workaround, better goto WaitingForMetadataService
     case Event(message, data) =>
       log.error(s"Received unexpected message $message in state $stateName with data $data")
       stay()
@@ -286,6 +286,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue], req: ActorRef): State = {
     val groupedEvents = groupEvents(eventsList)
     req ! BuiltMetadataResponse(processMetadataEvents(query, groupedEvents, expandedValues))
+    log.info(s"in MBA, sending msg to ${sender()}")
     allDone
   }
 
