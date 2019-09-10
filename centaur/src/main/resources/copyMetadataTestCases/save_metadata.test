@@ -1,0 +1,15 @@
+name: save_metadata
+testFormat: workflowsuccess
+tags: [ "wdl_upgrade" ]
+
+files {
+  workflow: save_metadata/saveMetadata.wdl
+  options: save_metadata/saveMetadataOptions.json
+}
+
+metadata {
+  workflowName: saveMetadata
+  status: Succeeded
+  "outputs.saveMetadata.doubled.0": 1
+  "outputs.saveMetadata.doubled.1": 4
+}

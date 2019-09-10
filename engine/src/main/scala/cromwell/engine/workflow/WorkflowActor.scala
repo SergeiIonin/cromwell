@@ -21,7 +21,7 @@ import cromwell.engine.workflow.lifecycle._
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor._
 import cromwell.engine.workflow.lifecycle.finalization.WorkflowFinalizationActor.{StartFinalizationCommand, WorkflowFinalizationFailedResponse, WorkflowFinalizationSucceededResponse}
-import cromwell.engine.workflow.lifecycle.finalization.{CopyWorkflowLogsActor, CopyWorkflowOutputsActor, WorkflowFinalizationActor}
+import cromwell.engine.workflow.lifecycle.finalization.{CopyWorkflowLogsActor, CopyWorkflowMetadataActor, CopyWorkflowOutputsActor, WorkflowFinalizationActor}
 import cromwell.engine.workflow.lifecycle.initialization.WorkflowInitializationActor
 import cromwell.engine.workflow.lifecycle.initialization.WorkflowInitializationActor.{StartInitializationCommand, WorkflowInitializationFailedResponse, WorkflowInitializationResponse, WorkflowInitializationSucceededResponse}
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor
@@ -211,7 +211,7 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
   override val rootWorkflowIdForLogging = workflowId.toRoot
 
   private val restarting = initialStartableState.restarted
-  
+
   private val startTime = System.currentTimeMillis()
 
   private val workflowDockerLookupActor = context.actorOf(
@@ -306,7 +306,7 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
         blacklistCache = blacklistCache), name = s"WorkflowExecutionActor-$workflowId")
 
       executionActor ! ExecuteWorkflowCommand
-      
+
       val nextState = data.effectiveStartableState match {
         case RestartableAborting => WorkflowAbortingState
         case _ => ExecutingWorkflowState
@@ -319,11 +319,11 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
     case Event(AbortWorkflowCommand, data @ WorkflowActorData(_, Some(workflowDescriptor), _, _, _)) if !restarting =>
       handleAbortCommand(data, workflowDescriptor)
   }
-  
+
   /* ********************* */
   /* ****** Running ****** */
   /* ********************* */
-  
+
   // Handles workflow completion events from the WEA and abort command
   val executionResponseHandler: StateFunction = {
     // Workflow responses
@@ -339,7 +339,7 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
 
     // Whether we're running or aborting, restarting or not, pass along the abort command.
     // Note that aborting a workflow multiple times will result in as many abort commands sent to the execution actor
-    case Event(AbortWorkflowCommand, data @ WorkflowActorData(_, Some(workflowDescriptor), _, _, _)) => 
+    case Event(AbortWorkflowCommand, data @ WorkflowActorData(_, Some(workflowDescriptor), _, _, _)) =>
       handleAbortCommand(data, workflowDescriptor)
   }
 
@@ -359,7 +359,7 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
     case Event(_: WorkflowInitializationResponse, data @ WorkflowActorData(_, Some(workflowDescriptor), _, _, _)) =>
       finalizeWorkflow(data, workflowDescriptor, Map.empty, CallOutputs.empty, failures = None)
   }
-  
+
   // In aborting state, we can receive initialization responses or execution responses.
   when(WorkflowAbortingState)(abortHandler.orElse(executionResponseHandler))
 
@@ -375,13 +375,13 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
       goto(WorkflowFailedState) using data.copy(lastStateReached = StateCheckpoint(FinalizingWorkflowState, Option(failures)))
     case Event(AbortWorkflowCommand, _) => stay()
   }
-  
+
   def handleAbortCommand(data: WorkflowActorData, workflowDescriptor: EngineWorkflowDescriptor) = {
     data.currentLifecycleStateActor match {
-      case Some(currentActor) => 
+      case Some(currentActor) =>
         currentActor ! EngineLifecycleActorAbortCommand
         goto(WorkflowAbortingState)
-      case None => 
+      case None =>
         workflowLogger.warn(s"Received an abort command in state $stateName but there's no lifecycle actor associated. This is an abnormal state, finalizing the workflow anyway.")
         finalizeWorkflow(data, workflowDescriptor, Map.empty, CallOutputs.empty, None)
     }
@@ -478,26 +478,32 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
     goto(finalState) using data.copy(currentLifecycleStateActor = None)
   }
 
-  private[workflow] def makeFinalizationActor(workflowDescriptor: EngineWorkflowDescriptor, jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs) = {
-    val copyWorkflowOutputsActorProps = stateName match {
-      case InitializingWorkflowState => None
-      case _ => Option(CopyWorkflowOutputsActor.props(workflowIdForLogging, ioActor, workflowDescriptor, workflowOutputs, stateData.initializationData))
+  private[workflow] def makeFinalizationActor(workflowDescriptor: EngineWorkflowDescriptor, jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs): ActorRef = {
+    final case class FinalizationActorsProps(copyWorkflowOutputsActor: Option[Props], copyWorkflowMetadataActor: Option[Props])
+
+    val actorsPropsOption: FinalizationActorsProps = stateName match {
+      case InitializingWorkflowState => FinalizationActorsProps(None, None)
+      case _ => FinalizationActorsProps(Option(CopyWorkflowOutputsActor.props(workflowIdForLogging, ioActor, workflowDescriptor, workflowOutputs, stateData.initializationData)),
+        Option(CopyWorkflowMetadataActor.props(workflowIdForLogging, ioActor, serviceRegistryActor, workflowDescriptor, workflowOutputs, stateData.initializationData)))
     }
-    
+
     context.actorOf(WorkflowFinalizationActor.props(
       workflowDescriptor = workflowDescriptor,
       ioActor = ioActor,
       jobExecutionMap = jobExecutionMap,
       workflowOutputs = workflowOutputs,
       initializationData = stateData.initializationData,
-      copyWorkflowOutputsActor = copyWorkflowOutputsActorProps
+      copyWorkflowOutputsActor = actorsPropsOption.copyWorkflowOutputsActor,
+      copyWorkflowMetadataActor = actorsPropsOption.copyWorkflowMetadataActor
     ), name = s"WorkflowFinalizationActor")
   }
   /**
     * Run finalization actor and transition to FinalizingWorkflowState.
     */
-  private def finalizeWorkflow(data: WorkflowActorData, workflowDescriptor: EngineWorkflowDescriptor,
-                               jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs,
+  private def finalizeWorkflow(data: WorkflowActorData,
+                               workflowDescriptor: EngineWorkflowDescriptor,
+                               jobExecutionMap: JobExecutionMap,
+                               workflowOutputs: CallOutputs,
                                failures: Option[List[Throwable]]) = {
     val finalizationActor = makeFinalizationActor(workflowDescriptor, jobExecutionMap, workflowOutputs)
     finalizationActor ! StartFinalizationCommand

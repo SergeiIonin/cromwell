@@ -2,6 +2,7 @@ package cromwell.services.metadata
 
 import java.time.OffsetDateTime
 
+import io.circe.Json
 import akka.actor.ActorRef
 import cats.data.NonEmptyList
 import cromwell.core._
@@ -11,7 +12,6 @@ import wom.core._
 import wom.values._
 
 import scala.util.Random
-
 
 object MetadataService {
 
@@ -38,7 +38,14 @@ object MetadataService {
   trait MetadataServiceAction extends MetadataServiceMessage with ServiceRegistryMessage {
     def serviceName = MetadataServiceName
   }
-  trait ReadAction extends MetadataServiceAction
+  trait MetadataReadAction extends MetadataServiceAction
+
+  object MetadataEmptyReadAction extends MetadataReadAction
+
+  trait WorkflowMetadataReadAction extends MetadataReadAction {
+    def workflowId: WorkflowId
+  }
+
   object PutMetadataAction {
     def apply(event: MetadataEvent, others: MetadataEvent*) = new PutMetadataAction(List(event) ++ others)
   }
@@ -82,17 +89,26 @@ object MetadataService {
 
   final case object ListenToMetadataWriteActor extends MetadataServiceAction with ListenToMessage
 
-  final case class GetSingleWorkflowMetadataAction(workflowId: WorkflowId,
-                                                   includeKeysOption: Option[NonEmptyList[String]],
-                                                   excludeKeysOption: Option[NonEmptyList[String]],
-                                                   expandSubWorkflows: Boolean)
-    extends ReadAction
-  final case class GetMetadataQueryAction(key: MetadataQuery) extends ReadAction
-  final case class GetStatus(workflowId: WorkflowId) extends ReadAction
-  final case class GetLabels(workflowId: WorkflowId) extends ReadAction
-  final case class WorkflowQuery(parameters: Seq[(String, String)]) extends ReadAction
-  final case class WorkflowOutputs(workflowId: WorkflowId) extends ReadAction
-  final case class GetLogs(workflowId: WorkflowId) extends ReadAction
+  // Utility object to get GetMetadataAction's for a workflow-only query:
+  object GetSingleWorkflowMetadataAction {
+    def apply(workflowId: WorkflowId,
+              includeKeysOption: Option[NonEmptyList[String]],
+              excludeKeysOption: Option[NonEmptyList[String]],
+              expandSubWorkflows: Boolean): WorkflowMetadataReadAction = {
+      GetMetadataAction(MetadataQuery(workflowId, None, None, includeKeysOption, excludeKeysOption, expandSubWorkflows))
+    }
+  }
+
+
+  final case class GetMetadataAction(key: MetadataQuery) extends WorkflowMetadataReadAction {
+    override def workflowId: WorkflowId = key.workflowId
+  }
+  final case class SwitchToWaitMetadata(requester: ActorRef) extends MetadataServiceAction
+  final case class GetStatus(workflowId: WorkflowId) extends WorkflowMetadataReadAction
+  final case class GetLabels(workflowId: WorkflowId) extends WorkflowMetadataReadAction
+  final case class QueryForWorkflowsMatchingParameters(parameters: Seq[(String, String)]) extends MetadataReadAction
+  final case class WorkflowOutputs(workflowId: WorkflowId) extends WorkflowMetadataReadAction
+  final case class GetLogs(workflowId: WorkflowId) extends WorkflowMetadataReadAction
   case object RefreshSummary extends MetadataServiceAction
   trait ValidationCallback {
     def onMalformed(possibleWorkflowId: String): Unit
@@ -112,7 +128,12 @@ object MetadataService {
     def reason: Throwable
   }
 
+  final case class MetadataLookupJsonResponse(query: MetadataQuery, result: Json) extends MetadataServiceResponse
+  final case class MetadataLookupFailed(query: MetadataQuery, reason: Throwable)
+
   final case class MetadataLookupResponse(query: MetadataQuery, eventList: Seq[MetadataEvent]) extends MetadataServiceResponse
+  final case class MetadataLookupResponseWithRequester(query: MetadataQuery,
+                                      eventList: Seq[MetadataEvent], requester: ActorRef) extends MetadataServiceResponse
   final case class MetadataServiceKeyLookupFailed(query: MetadataQuery, reason: Throwable) extends MetadataServiceFailure
 
   final case class StatusLookupResponse(workflowId: WorkflowId, status: WorkflowState) extends MetadataServiceResponse
@@ -148,12 +169,12 @@ object MetadataService {
         .flatMap { case (value, index) => womValueToMetadataEvents(metadataKey.copy(key = s"${metadataKey.key}[$index]"), value) }
     }
   }
-  
+
   private def toPrimitiveEvent(metadataKey: MetadataKey, valueName: String)(value: Option[Any]) = value match {
     case Some(v) => MetadataEvent(metadataKey.copy(key = s"${metadataKey.key}:$valueName"), MetadataValue(v))
     case None => MetadataEvent(metadataKey.copy(key = s"${metadataKey.key}:$valueName"), MetadataValue("", MetadataNull))
   }
-  
+
   def womValueToMetadataEvents(metadataKey: MetadataKey, womValue: WomValue): Iterable[MetadataEvent] = womValue match {
     case WomArray(_, valueSeq) => valueSeq.toEvents(metadataKey)
     case WomMap(_, valueMap) =>

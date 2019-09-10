@@ -83,7 +83,7 @@ class CopyWorkflowOutputsActor(workflowId: WorkflowId, override val ioActor: Act
       }
     }
   }
-  
+
   private def getOutputFilePaths(workflowOutputsPath: Path): List[(Path, Path)] = {
 
     val useRelativeOutputPaths: Boolean = workflowDescriptor.getWorkflowOption(UseRelativeOutputPaths).contains("true")
