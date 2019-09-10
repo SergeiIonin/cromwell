@@ -23,8 +23,9 @@ import scala.language.postfixOps
 object MetadataBuilderActor {
   sealed abstract class MetadataBuilderActorResponse
   case class BuiltMetadataResponse(response: JsObject) extends MetadataBuilderActorResponse
-  case object ReadyToBuildResponse extends MetadataBuilderActorResponse
   case class FailedMetadataResponse(reason: Throwable) extends MetadataBuilderActorResponse
+
+  case object ReadyToBuildResponse
 
   sealed trait MetadataBuilderActorState
   case object Idle extends MetadataBuilderActorState

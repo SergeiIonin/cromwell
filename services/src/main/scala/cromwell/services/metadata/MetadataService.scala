@@ -115,7 +115,6 @@ object MetadataService {
 
   final case class MetadataLookupResponse(query: MetadataQuery, eventList: Seq[MetadataEvent]) extends MetadataServiceResponse
   final case class MetadataLookupResponseWithRequester(query: MetadataQuery, eventList: Seq[MetadataEvent], requester: ActorRef) extends MetadataServiceResponse
-  final case class MetadataLookupResponseWithRequester(query: MetadataQuery, eventList: Seq[MetadataEvent], requester: ActorRef) extends MetadataServiceResponse
   final case class MetadataServiceKeyLookupFailed(query: MetadataQuery, reason: Throwable) extends MetadataServiceFailure
 
   final case class StatusLookupResponse(workflowId: WorkflowId, status: WorkflowState) extends MetadataServiceResponse
