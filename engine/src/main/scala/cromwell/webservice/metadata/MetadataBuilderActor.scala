@@ -204,13 +204,19 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
 
   private var target: ActorRef = ActorRef.noSender
 
-  startWith(WaitingForMetadataService, None)
+  startWith(Idle, None)
   val tag = self.path.name
+
+  onTransition {
+    case Idle -> WaitingForMetadataService =>
+      log.info(s"In CWMA, from Idle to WaitingForMetadataService")
+  }
 
   when(Idle) {
     case Event(action: MetadataServiceAction, _) =>
       target = sender()
       serviceRegistryActor ! action
+      log.info(s"In CWMA, in state ${stateName}, action is ${action}")
       action match {
         case SwitchToWaitMetadata(requester) =>
           requester ! ReadyToBuildResponse
@@ -354,7 +360,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     else {
       query match {
         case MetadataQuery(w, _, _, _, _, _) => {
-          log.info("In the MDBA, processMetadataEvents")
+          log.info("In the MBA, processMetadataEvents")
           workflowMetadataResponse(w, eventsList, includeCallsIfEmpty = true, expandedValues)
         }
         case _ => MetadataBuilderActor.parse(eventsList, expandedValues)

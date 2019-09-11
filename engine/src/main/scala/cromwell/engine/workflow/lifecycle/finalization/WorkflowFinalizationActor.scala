@@ -136,7 +136,9 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
   }
 
   when(FinalizationInProgressState) {
-    case Event(FinalizationSuccess, stateData) => checkForDoneAndTransition(stateData.withSuccess(sender))
+    case Event(FinalizationSuccess, stateData) =>
+      log.info(s"In WFA, got msg from ${sender()}")
+      checkForDoneAndTransition(stateData.withSuccess(sender))
     case Event(FinalizationFailed(reason), stateData) => checkForDoneAndTransition(stateData.withFailure(sender, reason))
   }
 
