@@ -1,0 +1,14 @@
+name: square2
+testFormat: workflowsuccess
+tags: [ "wdl_upgrade" ]
+
+files {
+  workflow: square2/square2.wdl
+}
+
+metadata {
+  workflowName: square2
+  status: Succeeded
+  "outputs.square2.doubled.0": 1
+  "outputs.square2.doubled.1": 4
+}

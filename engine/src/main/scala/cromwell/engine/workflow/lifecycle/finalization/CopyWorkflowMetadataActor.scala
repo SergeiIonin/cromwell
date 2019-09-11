@@ -90,13 +90,22 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
   when(GetMetadata) {
     case Event(builtMetadataResponse: BuiltMetadataResponse, data) => {
       log.info(s"In the CWMA, state $stateName")
+      val mba = data.get.builderActor.get // todo is it important?
+      context.stop(mba)
+      val respondTo = data.get.respActor.get
       val metadataContent = getJsBundle(builtMetadataResponse).toString
       writeMetadataToPath(data.get.metaDataPath, metadataContent) onComplete {
-        case Success(_) => data.get.respActor.get ! FinalizationSuccess //respondTo ! s
-        case Failure(f) => data.get.respActor.get ! FinalizationFailed(f)
+        case Success(_) =>
+          log.info(s"the FinalizationSuccess is sending to ${respondTo}")
+          respondTo ! FinalizationSuccess //respondTo ! s
+        case Failure(f) =>
+          log.info(s"the FinalizationFailed is sending to ${respondTo}")
+          respondTo ! FinalizationFailed(f)
+        /*case Success(_) => data.get.respActor.get ! FinalizationSuccess //respondTo ! s
+        case Failure(f) => data.get.respActor.get ! FinalizationFailed(f)*/
       }
     }
-      context.stop(self)
+      //context.stop(self)  // todo figure out how context.stop(self) is affecting! check for system.stop(mba)
       stay()
   }
 
@@ -111,7 +120,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
     val destFileName = workflowId.id + "_metadata.json"
     val fullWorkflowMetadataPath = buildPath(workflowMetadataPath + "/" + destFileName)
     log.info(s"In CWMA, this is the workflowMetadataPath $workflowMetadataPath")
-    log.info(s"In CWMA, here's the metadataContent $metadataContent")
+    //log.info(s"In CWMA, here's the metadataContent $metadataContent")
     asyncIo.writeAsync(fullWorkflowMetadataPath, metadataContent, BetterFileMethods.OpenOptions.default)
   }
 
