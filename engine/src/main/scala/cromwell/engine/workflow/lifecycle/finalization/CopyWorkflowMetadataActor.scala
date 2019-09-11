@@ -1,6 +1,6 @@
 package cromwell.engine.workflow.lifecycle.finalization
 
-import akka.actor.{ActorRef, LoggingFSM, Props}
+import akka.actor.{ActorRef, LoggingFSM, PoisonPill, Props}
 import cromwell.backend.AllBackendInitializationData
 import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationFailed, FinalizationSuccess, Finalize}
 import cromwell.core.Dispatcher.IoDispatcher
@@ -30,6 +30,7 @@ object CopyWorkflowMetadataActor {
 }
 
 sealed trait CopyWorkflowMetadataActorState
+
 case object Initial extends CopyWorkflowMetadataActorState
 case object WaitingState extends CopyWorkflowMetadataActorState
 case object GetMetadata extends CopyWorkflowMetadataActorState
@@ -44,23 +45,16 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
                                 initializationData: AllBackendInitializationData)
   extends LoggingFSM[CopyWorkflowMetadataActorState, Option[CopyWorkflowMetadataActorData]] with MetadataServicesStore with MetadataDatabaseAccess
     with PathFactory with AsyncIoActorClient {
-  override lazy val ioCommandBuilder = GcsBatchCommandBuilder
   implicit val ec = context.dispatcher
+  override lazy val ioCommandBuilder = GcsBatchCommandBuilder
   override val pathBuilders = workflowDescriptor.pathBuilders
-  //val respondTo: ActorRef = sender
 
   startWith(Initial, None)
-
-  onTransition {
-    case Initial -> GetMetadata  =>
-      log.info("Transition from Initial to GetMetadata")
-  }
 
   when(Initial) {
     case Event(Finalize, _) =>
       val respondTo: ActorRef = sender
-      val selv = context.self // todo should it be here?
-      log.info(s"In the CWMA, state ${stateName}, respondTo is $respondTo")
+      val selv = context.self
       workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
         case Some(metadataPath) =>
           val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
@@ -89,29 +83,22 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
 
   when(GetMetadata) {
     case Event(builtMetadataResponse: BuiltMetadataResponse, data) => {
-      log.info(s"In the CWMA, state $stateName")
-      val mba = data.get.builderActor.get // todo is it important?
-      context.stop(mba)
+      val mba = data.get.builderActor.get
+      mba ! PoisonPill
       val respondTo = data.get.respActor.get
       val metadataContent = getJsBundle(builtMetadataResponse).toString
       writeMetadataToPath(data.get.metaDataPath, metadataContent) onComplete {
         case Success(_) =>
-          log.info(s"the FinalizationSuccess is sending to ${respondTo}")
-          respondTo ! FinalizationSuccess //respondTo ! s
+          respondTo ! FinalizationSuccess
         case Failure(f) =>
-          log.info(s"the FinalizationFailed is sending to ${respondTo}")
           respondTo ! FinalizationFailed(f)
-        /*case Success(_) => data.get.respActor.get ! FinalizationSuccess //respondTo ! s
-        case Failure(f) => data.get.respActor.get ! FinalizationFailed(f)*/
       }
     }
-      //context.stop(self)  // todo figure out how context.stop(self) is affecting! check for system.stop(mba)
       stay()
   }
 
   private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = {
     val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
-    log.info(s"CWMetadataActor, this is the jsObject $jsObject")
     jsObject
   }
 
@@ -119,9 +106,12 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
     val workflowMetadataPath = buildPath(workflowMetadataFilePath)
     val destFileName = workflowId.id + "_metadata.json"
     val fullWorkflowMetadataPath = buildPath(workflowMetadataPath + "/" + destFileName)
-    log.info(s"In CWMA, this is the workflowMetadataPath $workflowMetadataPath")
-    //log.info(s"In CWMA, here's the metadataContent $metadataContent")
     asyncIo.writeAsync(fullWorkflowMetadataPath, metadataContent, BetterFileMethods.OpenOptions.default)
+  }
+
+  override def postStop() = {
+    context.stop(self)
+    super.postStop()
   }
 
 }

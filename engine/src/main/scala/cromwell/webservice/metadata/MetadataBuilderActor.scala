@@ -207,18 +207,10 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   startWith(Idle, None)
   val tag = self.path.name
 
-  onTransition {
-    case Idle -> WaitingForMetadataService =>
-      log.info(s"In MBA, from Idle to WaitingForMetadataService")
-    case _ -> Idle =>
-      log.info(s"In MBA, back to Idle")
-  }
-
   when(Idle) {
     case Event(action: MetadataServiceAction, _) =>
       target = sender()
       serviceRegistryActor ! action
-      log.info(s"In MBA, ${self.path}, in state ${stateName}, action is ${action}, sender is ${sender()}")
       action match {
         case SwitchToWaitMetadata(requester) =>
           requester ! ReadyToBuildResponse
@@ -250,7 +242,6 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
       allDone
     case Event(MetadataLookupResponse(query, metadata), None) => processMetadataResponse(query, metadata) // todo add another case
     case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) =>
-      log.info(s"in MBA, got msg from $requester")
       processMetadataResponse(query, metadata, requester)
     case Event(_: ServiceRegistryFailure, _) =>
       target ! FailedMetadataResponse(new RuntimeException("Can't find metadata service"))
@@ -259,7 +250,6 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
       target ! FailedMetadataResponse(failure.reason)
       allDone
     case Event(unexpectedMessage, stateData) =>
-      log.info(s"in MBA, unexpected message is $unexpectedMessage, the target is $target")
       target ! FailedMetadataResponse(new RuntimeException(s"MetadataBuilderActor $tag(WaitingForMetadataService, $stateData) got an unexpected message: $unexpectedMessage"))
       context stop self
       stay()
@@ -304,7 +294,6 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue], req: ActorRef): State = {
     val groupedEvents = groupEvents(eventsList)
     req ! BuiltMetadataResponse(processMetadataEvents(query, groupedEvents, expandedValues))
-    log.info(s"in MBA, sending msg to ${sender()}")
     allDone
   }
 
@@ -362,7 +351,6 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     else {
       query match {
         case MetadataQuery(w, _, _, _, _, _) => {
-          log.info("In the MBA, processMetadataEvents")
           workflowMetadataResponse(w, eventsList, includeCallsIfEmpty = true, expandedValues)
         }
         case _ => MetadataBuilderActor.parse(eventsList, expandedValues)
