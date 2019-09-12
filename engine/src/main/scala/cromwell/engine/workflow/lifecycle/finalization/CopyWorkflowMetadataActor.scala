@@ -3,7 +3,7 @@ package cromwell.engine.workflow.lifecycle.finalization
 import akka.actor.{ActorRef, LoggingFSM, PoisonPill, Props}
 import cromwell.backend.AllBackendInitializationData
 import cromwell.backend.BackendWorkflowFinalizationActor.{FinalizationFailed, FinalizationSuccess, Finalize}
-import cromwell.core.Dispatcher.IoDispatcher
+import cromwell.core.Dispatcher.{IoDispatcher, ServiceDispatcher}
 import cromwell.core.WorkflowOptions._
 import cromwell.core._
 import cromwell.core.io.AsyncIoActorClient
@@ -13,13 +13,13 @@ import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
 import cromwell.services.MetadataServicesStore
 import cromwell.services.metadata.MetadataQuery
 import cromwell.services.metadata.MetadataService.{MetadataLookupResponseWithRequester, MetadataServiceKeyLookupFailed, SwitchToWaitMetadata}
-import cromwell.services.metadata.impl.MetadataDatabaseAccess
-import cromwell.webservice.metadata.MetadataBuilderActor
-import cromwell.webservice.metadata.MetadataBuilderActor.{BuiltMetadataResponse, ReadyToBuildResponse}
+import cromwell.services.metadata.impl.{MetadataDatabaseAccess, ReadDatabaseMetadataWorkerActor}
 import spray.json.JsObject
+import cromwell.services.metadata.impl.builder.MetadataBuilderActor
+import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{BuiltMetadataResponse, ReadyToBuildResponse}
 
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.{Failure, Success}
 
 object CopyWorkflowMetadataActor {
@@ -49,6 +49,10 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
   override lazy val ioCommandBuilder = GcsBatchCommandBuilder
   override val pathBuilders = workflowDescriptor.pathBuilders
 
+  private val metadataReadTimeout: Duration = Duration(30, "seconds")
+
+  def readMetadataWorkerActorProps(): Props = ReadDatabaseMetadataWorkerActor.props(metadataReadTimeout).withDispatcher(ServiceDispatcher)
+
   startWith(Initial, None)
 
   when(Initial) {
@@ -57,7 +61,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
       val selv = context.self
       workflowDescriptor.getWorkflowOption(FinalWorkflowMetadataDir) match {
         case Some(metadataPath) =>
-          val mba = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
+          val mba = context.actorOf(MetadataBuilderActor.props(readMetadataWorkerActorProps))
           mba ! SwitchToWaitMetadata(selv)
           goto(WaitingState) using Option(CopyWorkflowMetadataActorData(metadataPath, Option(mba), Option(respondTo)))
         case None =>
@@ -97,7 +101,7 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
   }
 
   private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = builtMetadataResponse match {
-    case BuiltMetadataResponse(jsObject) => jsObject
+    case BuiltMetadataResponse(_, jsObject) => jsObject
     case _ => JsObject.empty
   }
 
