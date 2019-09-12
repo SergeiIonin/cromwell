@@ -489,8 +489,6 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
 
     val copyWorkflowOutputsActorProps = Option(actorsList(0))
     val copyWorkflowMetadataActorProps = Option(actorsList(1))
-    log.info(s"WA in makeFinalizationActor, $copyWorkflowMetadataActorProps")
-
 
 
     context.actorOf(WorkflowFinalizationActor.props(

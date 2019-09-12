@@ -240,7 +240,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
     case Event(LogsResponse(w, l), _) =>
       target ! BuiltMetadataResponse(workflowMetadataResponse(w, l, includeCallsIfEmpty = false, Map.empty))
       allDone
-    case Event(MetadataLookupResponse(query, metadata), None) => processMetadataResponse(query, metadata) // todo add another case
+    case Event(MetadataLookupResponse(query, metadata), None) => processMetadataResponse(query, metadata)
     case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) =>
       processMetadataResponse(query, metadata, requester)
     case Event(_: ServiceRegistryFailure, _) =>
@@ -261,7 +261,6 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   }
 
   whenUnhandled {
-    //case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester) // todo just a workaround, better goto WaitingForMetadataService
     case Event(message, data) =>
       log.error(s"Received unexpected message $message in state $stateName with data $data")
       stay()

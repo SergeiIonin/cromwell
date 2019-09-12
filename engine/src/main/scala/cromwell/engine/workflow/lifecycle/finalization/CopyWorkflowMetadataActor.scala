@@ -62,7 +62,6 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
           goto(WaitingState) using Option(CopyWorkflowMetadataActorData(metadataPath, Option(mba), Option(respondTo)))
         case None =>
           respondTo ! FinalizationSuccess
-          context.stop(self)
           stay()
       }
   }
@@ -97,9 +96,9 @@ class CopyWorkflowMetadataActor(workflowId: WorkflowId, override val ioActor: Ac
       stay()
   }
 
-  private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = {
-    val jsObject: JsObject = (BuiltMetadataResponse unapply builtMetadataResponse).getOrElse(JsObject.empty)
-    jsObject
+  private def getJsBundle(builtMetadataResponse: BuiltMetadataResponse): JsObject = builtMetadataResponse match {
+    case BuiltMetadataResponse(jsObject) => jsObject
+    case _ => JsObject.empty
   }
 
   private def writeMetadataToPath(workflowMetadataFilePath: String, metadataContent: String): Future[Unit] = {
