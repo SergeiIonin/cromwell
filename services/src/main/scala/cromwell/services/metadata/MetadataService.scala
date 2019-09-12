@@ -88,6 +88,7 @@ object MetadataService {
                                                    expandSubWorkflows: Boolean)
     extends ReadAction
   final case class GetMetadataQueryAction(key: MetadataQuery) extends ReadAction
+  final case class SwitchToWaitMetadata(requester: ActorRef) extends ReadAction
   final case class GetStatus(workflowId: WorkflowId) extends ReadAction
   final case class GetLabels(workflowId: WorkflowId) extends ReadAction
   final case class WorkflowQuery(parameters: Seq[(String, String)]) extends ReadAction
@@ -113,6 +114,7 @@ object MetadataService {
   }
 
   final case class MetadataLookupResponse(query: MetadataQuery, eventList: Seq[MetadataEvent]) extends MetadataServiceResponse
+  final case class MetadataLookupResponseWithRequester(query: MetadataQuery, eventList: Seq[MetadataEvent], requester: ActorRef) extends MetadataServiceResponse
   final case class MetadataServiceKeyLookupFailed(query: MetadataQuery, reason: Throwable) extends MetadataServiceFailure
 
   final case class StatusLookupResponse(workflowId: WorkflowId, status: WorkflowState) extends MetadataServiceResponse

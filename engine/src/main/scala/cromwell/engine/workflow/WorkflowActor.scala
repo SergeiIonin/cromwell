@@ -21,7 +21,7 @@ import cromwell.engine.workflow.lifecycle._
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor._
 import cromwell.engine.workflow.lifecycle.finalization.WorkflowFinalizationActor.{StartFinalizationCommand, WorkflowFinalizationFailedResponse, WorkflowFinalizationSucceededResponse}
-import cromwell.engine.workflow.lifecycle.finalization.{CopyWorkflowLogsActor, CopyWorkflowOutputsActor, WorkflowFinalizationActor}
+import cromwell.engine.workflow.lifecycle.finalization.{CopyWorkflowLogsActor, CopyWorkflowMetadataActor, CopyWorkflowOutputsActor, WorkflowFinalizationActor}
 import cromwell.engine.workflow.lifecycle.initialization.WorkflowInitializationActor
 import cromwell.engine.workflow.lifecycle.initialization.WorkflowInitializationActor.{StartInitializationCommand, WorkflowInitializationFailedResponse, WorkflowInitializationResponse, WorkflowInitializationSucceededResponse}
 import cromwell.engine.workflow.lifecycle.materialization.MaterializeWorkflowDescriptorActor
@@ -478,26 +478,36 @@ class WorkflowActor(workflowToStart: WorkflowToStart,
     goto(finalState) using data.copy(currentLifecycleStateActor = None)
   }
 
-  private[workflow] def makeFinalizationActor(workflowDescriptor: EngineWorkflowDescriptor, jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs) = {
-    val copyWorkflowOutputsActorProps = stateName match {
+  private[workflow] def makeFinalizationActor(workflowDescriptor: EngineWorkflowDescriptor, jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs): ActorRef = {
+    val actorsPropsOptionList: Option[List[Props]] = stateName match {
       case InitializingWorkflowState => None
-      case _ => Option(CopyWorkflowOutputsActor.props(workflowIdForLogging, ioActor, workflowDescriptor, workflowOutputs, stateData.initializationData))
+      case _ => Option(List(CopyWorkflowOutputsActor.props(workflowIdForLogging, ioActor, workflowDescriptor, workflowOutputs, stateData.initializationData),
+        CopyWorkflowMetadataActor.props(workflowIdForLogging, ioActor, serviceRegistryActor, workflowDescriptor, workflowOutputs, stateData.initializationData)))
     }
-    
+
+    val actorsList: List[Props] = actorsPropsOptionList.getOrElse(List(Props.empty))
+
+    val copyWorkflowOutputsActorProps = Option(actorsList(0))
+    val copyWorkflowMetadataActorProps = Option(actorsList(1))
+
+
     context.actorOf(WorkflowFinalizationActor.props(
-      workflowDescriptor = workflowDescriptor,
-      ioActor = ioActor,
-      jobExecutionMap = jobExecutionMap,
-      workflowOutputs = workflowOutputs,
-      initializationData = stateData.initializationData,
-      copyWorkflowOutputsActor = copyWorkflowOutputsActorProps
+      workflowDescriptor,
+      ioActor,
+      jobExecutionMap,
+      workflowOutputs,
+      stateData.initializationData,
+      copyWorkflowOutputsActorProps,
+      copyWorkflowMetadataActorProps
     ), name = s"WorkflowFinalizationActor")
   }
   /**
     * Run finalization actor and transition to FinalizingWorkflowState.
     */
-  private def finalizeWorkflow(data: WorkflowActorData, workflowDescriptor: EngineWorkflowDescriptor,
-                               jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs,
+  private def finalizeWorkflow(data: WorkflowActorData,
+                               workflowDescriptor: EngineWorkflowDescriptor,
+                               jobExecutionMap: JobExecutionMap,
+                               workflowOutputs: CallOutputs,
                                failures: Option[List[Throwable]]) = {
     val finalizationActor = makeFinalizationActor(workflowDescriptor, jobExecutionMap, workflowOutputs)
     finalizationActor ! StartFinalizationCommand

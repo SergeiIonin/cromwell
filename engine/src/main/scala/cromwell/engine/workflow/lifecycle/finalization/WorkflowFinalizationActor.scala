@@ -46,14 +46,16 @@ object WorkflowFinalizationActor {
             jobExecutionMap: JobExecutionMap,
             workflowOutputs: CallOutputs,
             initializationData: AllBackendInitializationData,
-            copyWorkflowOutputsActor: Option[Props]): Props = {
+            copyWorkflowOutputsActor: Option[Props],
+            copyWorkflowMetadataActor: Option[Props]): Props = {
     Props(new WorkflowFinalizationActor(
       workflowDescriptor,
       ioActor,
       jobExecutionMap,
       workflowOutputs,
       initializationData,
-      copyWorkflowOutputsActor
+      copyWorkflowOutputsActor,
+      copyWorkflowMetadataActor
     )).withDispatcher(EngineDispatcher)
   }
 }
@@ -63,7 +65,8 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
                                      jobExecutionMap: JobExecutionMap,
                                      workflowOutputs: CallOutputs,
                                      initializationData: AllBackendInitializationData,
-                                     copyWorkflowOutputsActorProps: Option[Props])
+                                     copyWorkflowOutputsActorProps: Option[Props],
+                                     copyWorkflowMetadataActorProps: Option[Props])
   extends WorkflowLifecycleActor[WorkflowFinalizationActorState] {
 
   override lazy val workflowIdForLogging = workflowDescriptor.possiblyNotRootWorkflowId
@@ -99,7 +102,8 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
         } yield actor
       }
 
-      val engineFinalizationActor = Try { copyWorkflowOutputsActorProps.map(context.actorOf(_, "CopyWorkflowOutputsActor")).toList }
+      val engineFinalizationActor = Try {copyWorkflowOutputsActorProps.map(context.actorOf(_, "CopyWorkflowOutputsActor")).toList :::
+        copyWorkflowMetadataActorProps.map(context.actorOf(_, "CopyWorkflowMetadataActor")).toList}
 
       val allActors = for {
         backendFinalizationActorsFromTry <- backendFinalizationActors
@@ -132,10 +136,10 @@ case class WorkflowFinalizationActor(workflowDescriptor: EngineWorkflowDescripto
   }
 
   when(FinalizationInProgressState) {
-    case Event(FinalizationSuccess, stateData) => checkForDoneAndTransition(stateData.withSuccess(sender))
+    case Event(FinalizationSuccess, stateData) =>
+      checkForDoneAndTransition(stateData.withSuccess(sender))
     case Event(FinalizationFailed(reason), stateData) => checkForDoneAndTransition(stateData.withFailure(sender, reason))
   }
-
   when(FinalizationSucceededState) { FSM.NullFunction }
   when(WorkflowFinalizationFailedState) { FSM.NullFunction }
 }

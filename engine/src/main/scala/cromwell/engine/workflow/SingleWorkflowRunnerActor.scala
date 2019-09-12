@@ -161,6 +161,7 @@ class SingleWorkflowRunnerActor(source: WorkflowSourceFilesCollection,
     // when outputs or metadata have stabilized.
     val metadataBuilder = context.actorOf(MetadataBuilderActor.props(serviceRegistryActor), s"StatusRequest-Workflow-$id-request-${UUID.randomUUID()}")
     metadataBuilder ! GetStatus(id)
+    log.info(s"In SWRA, GetStatus was requested")
   }
 
   private def issueSuccessReply(replyTo: ActorRef): State = {
