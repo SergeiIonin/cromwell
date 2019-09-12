@@ -1,0 +1,10 @@
+name: save_metadataCorrectPath
+testFormat: workflowsuccess
+workflowType: WDL
+workflowTypeVersion: 1.0
+
+files {
+  workflow: /home/sergei_ionin/Cromwell/cromwell/centaur/src/main/resources/optTestCases/save_metadata/myWorkflow.wdl
+inputs: /home/sergei_ionin/Cromwell/cromwell/centaur/src/main/resources/optTestCases/save_metadata/inputsWorkflow.json
+options: /home/sergei_ionin/Cromwell/cromwell/centaur/src/main/resources/optTestCases/save_metadata/myOptions.json
+}

@@ -23,6 +23,7 @@ import scala.language.postfixOps
 object MetadataBuilderActor {
   sealed abstract class MetadataBuilderActorResponse
   case class BuiltMetadataResponse(response: JsObject) extends MetadataBuilderActorResponse
+  case object ReadyToBuildResponse extends MetadataBuilderActorResponse
   case class FailedMetadataResponse(reason: Throwable) extends MetadataBuilderActorResponse
 
   case object ReadyToBuildResponse
@@ -250,6 +251,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
       target ! FailedMetadataResponse(failure.reason)
       allDone
     case Event(unexpectedMessage, stateData) =>
+      log.info(s"in MBA, unexpected message is $unexpectedMessage, the target is $target")
       target ! FailedMetadataResponse(new RuntimeException(s"MetadataBuilderActor $tag(WaitingForMetadataService, $stateData) got an unexpected message: $unexpectedMessage"))
       context stop self
       stay()
@@ -261,6 +263,7 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
   }
 
   whenUnhandled {
+    case Event(MetadataLookupResponseWithRequester(query, metadata, requester), None) => processMetadataResponse(query, metadata, requester) // todo just a workaround, better goto WaitingForMetadataService
     case Event(message, data) =>
       log.error(s"Received unexpected message $message in state $stateName with data $data")
       stay()
