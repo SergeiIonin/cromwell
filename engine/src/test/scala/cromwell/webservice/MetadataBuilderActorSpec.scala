@@ -9,13 +9,12 @@ import akka.util.Timeout
 import cromwell.core._
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata._
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{BuiltMetadataResponse, MetadataBuilderActorResponse}
+import cromwell.webservice.metadata.MetadataBuilderActor
+import cromwell.webservice.metadata.MetadataBuilderActor.{BuiltMetadataResponse, MetadataBuilderActorResponse}
 import org.scalatest.prop.TableDrivenPropertyChecks
 import org.scalatest.{Assertion, AsyncFlatSpecLike, Matchers, Succeeded}
 import org.specs2.mock.Mockito
 import spray.json._
-import cromwell.util.AkkaTestUtil.EnhancedTestProbe
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -34,16 +33,13 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
                              queryReply: MetadataQuery,
                              events: Seq[MetadataEvent],
                              expectedRes: String): Future[Assertion] = {
-    val mockReadMetadataWorkerActor = TestProbe()
-    def readMetadataWorkerMaker = () => mockReadMetadataWorkerActor.props
-
-
-    val mba = system.actorOf(MetadataBuilderActor.props(readMetadataWorkerMaker))
+    val mockServiceRegistry = TestProbe()
+    val mba = system.actorOf(MetadataBuilderActor.props(mockServiceRegistry.ref))
     val response = mba.ask(action).mapTo[MetadataBuilderActorResponse]
-    mockReadMetadataWorkerActor.expectMsg(defaultTimeout, action)
-    mockReadMetadataWorkerActor.reply(MetadataLookupResponse(queryReply, events))
+    mockServiceRegistry.expectMsg(defaultTimeout, action)
+    mockServiceRegistry.reply(MetadataLookupResponse(queryReply, events))
     response map { r => r shouldBe a [BuiltMetadataResponse] }
-    response.mapTo[BuiltMetadataResponse] map { b => b.responseJson shouldBe expectedRes.parseJson}
+    response.mapTo[BuiltMetadataResponse] map { b => b.response shouldBe expectedRes.parseJson}
   }
 
   it should "build workflow scope tree from metadata events" in {
@@ -100,7 +96,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
       |}""".stripMargin
 
     val mdQuery = MetadataQuery(workflowA, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     assertMetadataResponse(queryAction, mdQuery, workflowAEvents, expectedRes)
   }
 
@@ -354,7 +350,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
       """.stripMargin
 
     val mdQuery = MetadataQuery(workflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     assertMetadataResponse(queryAction, mdQuery, events, expectedResponse)
   }
 
@@ -375,7 +371,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
       """.stripMargin
 
     val mdQuery = MetadataQuery(workflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     assertMetadataResponse(queryAction, mdQuery, events, expectedResponse)
   }
 
@@ -395,14 +391,14 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
       """.stripMargin
 
     val mdQuery = MetadataQuery(workflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     assertMetadataResponse(queryAction, mdQuery, events, expectedResponse)
   }
 
   it should "render empty Json" in {
     val workflowId = WorkflowId.randomId()
     val mdQuery = MetadataQuery(workflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     val expectedEmptyResponse = """{}"""
     assertMetadataResponse(queryAction, mdQuery, List.empty, expectedEmptyResponse)
   }
@@ -432,7 +428,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
       """.stripMargin
 
     val mdQuery = MetadataQuery(workflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryAction = GetMetadataAction(mdQuery)
+    val queryAction = GetMetadataQueryAction(mdQuery)
     assertMetadataResponse(queryAction, mdQuery, emptyEvents, expectedEmptyResponse)
 
     val expectedNonEmptyResponse =
@@ -460,22 +456,20 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
     )
     
     val mainQuery = MetadataQuery(mainWorkflowId, None, None, None, None, expandSubWorkflows = true)
-    val mainQueryAction = GetMetadataAction(mainQuery)
+    val mainQueryAction = GetMetadataQueryAction(mainQuery)
     
     val subQuery = MetadataQuery(subWorkflowId, None, None, None, None, expandSubWorkflows = true)
-    val subQueryAction = GetMetadataAction(subQuery)
+    val subQueryAction = GetMetadataQueryAction(subQuery)
     
     val parentProbe = TestProbe()
+    val mockServiceRegistry = TestProbe()
 
-    val mockReadMetadataWorkerActor = TestProbe()
-    def readMetadataWorkerMaker = () => mockReadMetadataWorkerActor.props
-
-    val metadataBuilder = TestActorRef(MetadataBuilderActor.props(readMetadataWorkerMaker), parentProbe.ref, s"MetadataActor-${UUID.randomUUID()}")
+    val metadataBuilder = TestActorRef(MetadataBuilderActor.props(mockServiceRegistry.ref), parentProbe.ref, s"MetadataActor-${UUID.randomUUID()}")
     val response = metadataBuilder.ask(mainQueryAction).mapTo[MetadataBuilderActorResponse]
-    mockReadMetadataWorkerActor.expectMsg(defaultTimeout, mainQueryAction)
-    mockReadMetadataWorkerActor.reply(MetadataLookupResponse(mainQuery, mainEvents))
-    mockReadMetadataWorkerActor.expectMsg(defaultTimeout, subQueryAction)
-    mockReadMetadataWorkerActor.reply(MetadataLookupResponse(subQuery, subEvents))
+    mockServiceRegistry.expectMsg(defaultTimeout, mainQueryAction)
+    mockServiceRegistry.reply(MetadataLookupResponse(mainQuery, mainEvents))
+    mockServiceRegistry.expectMsg(defaultTimeout, subQueryAction)
+    mockServiceRegistry.reply(MetadataLookupResponse(subQuery, subEvents))
     
     val expandedRes =
       s"""
@@ -499,7 +493,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
 
     response map { r => r shouldBe a [BuiltMetadataResponse] }
     val bmr = response.mapTo[BuiltMetadataResponse]
-    bmr map { b => b.responseJson shouldBe expandedRes.parseJson}
+    bmr map { b => b.response shouldBe expandedRes.parseJson}
   }
   
   it should "NOT expand sub workflow metadata when NOT asked for" in {
@@ -511,17 +505,15 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
     )
 
     val queryNoExpand = MetadataQuery(mainWorkflowId, None, None, None, None, expandSubWorkflows = false)
-    val queryNoExpandAction = GetMetadataAction(queryNoExpand)
+    val queryNoExpandAction = GetMetadataQueryAction(queryNoExpand)
     
     val parentProbe = TestProbe()
+    val mockServiceRegistry = TestProbe()
 
-    val mockReadMetadataWorkerActor = TestProbe()
-    def readMetadataWorkerMaker= () => mockReadMetadataWorkerActor.props
-
-    val metadataBuilder = TestActorRef(MetadataBuilderActor.props(readMetadataWorkerMaker), parentProbe.ref, s"MetadataActor-${UUID.randomUUID()}")
+    val metadataBuilder = TestActorRef(MetadataBuilderActor.props(mockServiceRegistry.ref), parentProbe.ref, s"MetadataActor-${UUID.randomUUID()}")
     val response = metadataBuilder.ask(queryNoExpandAction).mapTo[MetadataBuilderActorResponse]
-    mockReadMetadataWorkerActor.expectMsg(defaultTimeout, queryNoExpandAction)
-    mockReadMetadataWorkerActor.reply(MetadataLookupResponse(queryNoExpand, mainEvents))
+    mockServiceRegistry.expectMsg(defaultTimeout, queryNoExpandAction)
+    mockServiceRegistry.reply(MetadataLookupResponse(queryNoExpand, mainEvents))
 
 
     val nonExpandedRes =
@@ -542,7 +534,7 @@ class MetadataBuilderActorSpec extends TestKitSuite("Metadata") with AsyncFlatSp
 
     response map { r => r shouldBe a [BuiltMetadataResponse] }
     val bmr = response.mapTo[BuiltMetadataResponse]
-    bmr map { b => b.responseJson shouldBe nonExpandedRes.parseJson}
+    bmr map { b => b.response shouldBe nonExpandedRes.parseJson}
 
   }
 

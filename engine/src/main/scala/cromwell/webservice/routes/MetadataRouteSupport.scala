@@ -16,9 +16,10 @@ import cromwell.core.{WorkflowId, path => _}
 import cromwell.engine.instrumentation.HttpInstrumentation
 import cromwell.server.CromwellShutdown
 import cromwell.services.metadata.MetadataService._
-import cromwell.services.metadata.impl.builder.MetadataBuilderActor.{BuiltMetadataResponse, FailedMetadataResponse, MetadataBuilderActorResponse}
 import cromwell.webservice.LabelsManagerActor
 import cromwell.webservice.LabelsManagerActor._
+import cromwell.webservice.metadata.MetadataBuilderRegulatorActor
+import cromwell.webservice.metadata.MetadataBuilderActor.{BuiltMetadataResponse, FailedMetadataResponse, MetadataBuilderActorResponse}
 import cromwell.webservice.routes.CromwellApiService.{InvalidWorkflowException, UnrecognizedWorkflowException, serviceShuttingDownResponse, validateWorkflowIdInMetadata, validateWorkflowIdInMetadataSummaries}
 import cromwell.webservice.routes.MetadataRouteSupport._
 import cromwell.webservice.WebServiceUtils.EnhancedThrowable
@@ -36,25 +37,27 @@ trait MetadataRouteSupport extends HttpInstrumentation {
 
   implicit val timeout: Timeout
 
+  lazy val metadataBuilderRegulatorActor = actorRefFactory.actorOf(MetadataBuilderRegulatorActor.props(serviceRegistryActor))
+
   val metadataRoutes = concat(
     path("workflows" / Segment / Segment / "status") { (_, possibleWorkflowId) =>
       get {
         instrumentRequest {
-          metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetStatus(w), serviceRegistryActor)
+          metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetStatus(w), serviceRegistryActor, metadataBuilderRegulatorActor)
         }
       }
     },
     path("workflows" / Segment / Segment / "outputs") { (_, possibleWorkflowId) =>
       get {
         instrumentRequest {
-          metadataLookup(possibleWorkflowId, (w: WorkflowId) => WorkflowOutputs(w), serviceRegistryActor)
+          metadataLookup(possibleWorkflowId, (w: WorkflowId) => WorkflowOutputs(w), serviceRegistryActor, metadataBuilderRegulatorActor)
         }
       }
     },
     path("workflows" / Segment / Segment / "logs") { (_, possibleWorkflowId) =>
       get {
         instrumentRequest {
-          metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetLogs(w), serviceRegistryActor)
+          metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetLogs(w), serviceRegistryActor, metadataBuilderRegulatorActor)
         }
       }
     },
@@ -68,7 +71,8 @@ trait MetadataRouteSupport extends HttpInstrumentation {
 
             metadataLookup(possibleWorkflowId,
               (w: WorkflowId) => GetSingleWorkflowMetadataAction(w, includeKeysOption, excludeKeysOption, expandSubWorkflows),
-              serviceRegistryActor)
+              serviceRegistryActor,
+              metadataBuilderRegulatorActor)
           }
         }
       }
@@ -77,7 +81,7 @@ trait MetadataRouteSupport extends HttpInstrumentation {
       concat(
         get {
           instrumentRequest {
-            metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetLabels(w), serviceRegistryActor)
+            metadataLookup(possibleWorkflowId, (w: WorkflowId) => GetLabels(w), serviceRegistryActor, metadataBuilderRegulatorActor)
           }
         },
         patch {
@@ -127,11 +131,12 @@ trait MetadataRouteSupport extends HttpInstrumentation {
 
 object MetadataRouteSupport {
   def metadataLookup(possibleWorkflowId: String,
-                     request: WorkflowId => MetadataReadAction,
-                     serviceRegistryActor: ActorRef)
+                     request: WorkflowId => ReadAction,
+                     serviceRegistryActor: ActorRef,
+                     metadataBuilderRegulatorActor: ActorRef)
                     (implicit timeout: Timeout,
                      ec: ExecutionContext): Route = {
-    completeMetadataBuilderResponse(metadataBuilderActorRequest(possibleWorkflowId, request, serviceRegistryActor))
+    completeMetadataBuilderResponse(metadataBuilderActorRequest(possibleWorkflowId, request, serviceRegistryActor, metadataBuilderRegulatorActor))
   }
 
   def queryMetadata(parameters: Seq[(String, String)],
@@ -140,16 +145,17 @@ object MetadataRouteSupport {
   }
 
   def metadataBuilderActorRequest(possibleWorkflowId: String,
-                                  request: WorkflowId => MetadataReadAction,
-                                  serviceRegistryActor: ActorRef)
+                                  request: WorkflowId => ReadAction,
+                                  serviceRegistryActor: ActorRef,
+                                  metadataBuilderRegulatorActor: ActorRef)
                                  (implicit timeout: Timeout,
                                   ec: ExecutionContext): Future[MetadataBuilderActorResponse] = {
-    validateWorkflowIdInMetadata(possibleWorkflowId, serviceRegistryActor) flatMap { w => serviceRegistryActor.ask(request(w)).mapTo[MetadataBuilderActorResponse] }
+    validateWorkflowIdInMetadata(possibleWorkflowId, serviceRegistryActor) flatMap { w => metadataBuilderRegulatorActor.ask(request(w)).mapTo[MetadataBuilderActorResponse] }
   }
 
   def completeMetadataBuilderResponse(response: Future[MetadataBuilderActorResponse]): Route = {
     onComplete(response) {
-      case Success(r: BuiltMetadataResponse) => complete(r.responseJson)
+      case Success(r: BuiltMetadataResponse) => complete(r.response)
       case Success(r: FailedMetadataResponse) => r.reason.errorRequest(StatusCodes.InternalServerError)
       case Failure(_: AskTimeoutException) if CromwellShutdown.shutdownInProgress() => serviceShuttingDownResponse
       case Failure(e: UnrecognizedWorkflowException) => e.failRequest(StatusCodes.NotFound)
@@ -161,7 +167,7 @@ object MetadataRouteSupport {
 
   def metadataQueryRequest(parameters: Seq[(String, String)],
                            serviceRegistryActor: ActorRef)(implicit timeout: Timeout): Future[MetadataQueryResponse] = {
-    serviceRegistryActor.ask(QueryForWorkflowsMatchingParameters(parameters)).mapTo[MetadataQueryResponse]
+    serviceRegistryActor.ask(WorkflowQuery(parameters)).mapTo[MetadataQueryResponse]
   }
 
   def completeMetadataQueryResponse(response: Future[MetadataQueryResponse]): Route = {

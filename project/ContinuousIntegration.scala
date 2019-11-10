@@ -1,4 +1,3 @@
-import Testing._
 import sbt.Keys._
 import sbt._
 import sbt.io.Path._
@@ -21,7 +20,6 @@ object ContinuousIntegration {
       IO.copyDirectory(srcCiResources.value, targetCiResources.value)
     },
     renderCiResources := {
-      minnieKenny.toTask("").value
       copyCiResources.value
       val log = streams.value.log
       if (!vaultToken.value.exists()) {

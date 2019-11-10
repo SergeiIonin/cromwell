@@ -22,6 +22,10 @@ object MetadataBuilderActor {
   sealed trait MetadataBuilderActorResponse extends MetadataServiceResponse { def originalRequest: MetadataReadAction }
   final case class BuiltMetadataResponse(originalRequest: MetadataReadAction, responseJson: JsObject) extends MetadataBuilderActorResponse
   final case class FailedMetadataResponse(originalRequest: MetadataReadAction, reason: Throwable) extends MetadataBuilderActorResponse
+<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
+=======
+  case object ReadyToBuildResponse extends MetadataServiceResponse
+>>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
 
   sealed trait MetadataBuilderActorState
   case object Idle extends MetadataBuilderActorState
@@ -109,7 +113,7 @@ object MetadataBuilderActor {
      *                                    1 -> Seq[Events],
      *                                    2 -> Seq[Events],
      *                                ...
-     *                             ),   
+     *                             ),
      *                ...
      *             ),
      *    ...
@@ -254,11 +258,23 @@ class MetadataBuilderActor(readMetadataWorkerMaker: () => Props)
 
   when(Idle) {
     case Event(action: MetadataReadAction, IdleData) =>
+<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
 
       val readActor = context.actorOf(readMetadataWorkerMaker.apply())
 
       readActor ! action
       goto(WaitingForMetadataService) using HasWorkData(sender(), action)
+=======
+      val readActor = context.actorOf(readMetadataWorkerMaker.apply())
+      readActor ! action
+      goto(WaitingForMetadataService) using HasWorkData(sender(), action)
+    case Event(action: SwitchToWaitMetadata, _) =>
+      val readActor = context.actorOf(readMetadataWorkerMaker.apply())
+      readActor ! action
+      val req =  action.requester
+      req ! ReadyToBuildResponse
+    goto(WaitingForMetadataService)
+>>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
   }
 
   private def allDone() = {
@@ -281,6 +297,11 @@ class MetadataBuilderActor(readMetadataWorkerMaker: () => Props)
       allDone()
     case Event(MetadataLookupResponse(query, metadata), HasWorkData(target, originalRequest)) =>
       processMetadataResponse(query, metadata, target, originalRequest)
+<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
+=======
+    case Event(MetadataLookupResponseWithRequester(query, metadata, requester), IdleData) =>
+      processMetadataResponseWithRequester(query, metadata, requester)
+>>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
     case Event(failure: MetadataServiceFailure, HasWorkData(target, originalRequest)) =>
       target ! FailedMetadataResponse(originalRequest, failure.reason)
       allDone()
@@ -336,11 +357,29 @@ class MetadataBuilderActor(readMetadataWorkerMaker: () => Props)
   }
 
   def buildAndStop(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue], target: ActorRef, originalRequest: MetadataReadAction) = {
+<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
     val groupedEvents = groupEvents(eventsList)
     target ! BuiltMetadataResponse(originalRequest, processMetadataEvents(query, groupedEvents, expandedValues))
     allDone()
   }
 
+=======
+    val groupedEvents = groupEvents(eventsList)
+    target ! BuiltMetadataResponse(originalRequest, processMetadataEvents(query, groupedEvents, expandedValues))
+    allDone()
+  }
+
+def buildAndStopWithRequester(query: MetadataQuery, eventsList: Seq[MetadataEvent], expandedValues: Map[String, JsValue], req: ActorRef) = {
+    val groupedEvents = groupEvents(eventsList)
+    req ! BuiltMetadataResponse(MetadataEmptyReadAction, processMetadataEvents(query, groupedEvents, expandedValues))
+    allDone()
+  }
+
+  def processMetadataResponseWithRequester(query: MetadataQuery, eventsList: Seq[MetadataEvent], req: ActorRef) = {
+    buildAndStopWithRequester(query, eventsList, Map.empty, req)
+  }
+
+>>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
   def processMetadataResponse(query: MetadataQuery, eventsList: Seq[MetadataEvent], target: ActorRef, originalRequest: MetadataReadAction) = {
     if (query.expandSubWorkflows) {
       // Scan events for sub workflow ids

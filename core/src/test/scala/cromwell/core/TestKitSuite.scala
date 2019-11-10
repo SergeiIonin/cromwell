@@ -2,8 +2,8 @@ package cromwell.core
 
 import java.util.UUID
 
-import akka.actor.ActorSystem
-import akka.testkit.{TestActors, TestKit}
+import akka.actor.{ActorSystem, Props}
+import akka.testkit.TestKit
 import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.{BeforeAndAfterAll, Suite}
 
@@ -21,9 +21,7 @@ abstract class TestKitSuite(actorSystemName: String = TestKitSuite.randomName,
     shutdown()
   }
 
-  // 'BlackHoleActor' swallows messages without logging them (thus reduces log file overhead):
-  val emptyActor = system.actorOf(TestActors.blackholeProps, "TestKitSuiteEmptyActor")
-
+  val emptyActor = system.actorOf(Props.empty, "TestKitSuiteEmptyActor")
   val mockIoActor = system.actorOf(MockIoActor.props(), "TestKitSuiteMockIoActor")
   val simpleIoActor = system.actorOf(SimpleIoActor.props, "TestKitSuiteSimpleIoActor")
   val failIoActor = system.actorOf(FailIoActor.props(), "TestKitSuiteFailIoActor")

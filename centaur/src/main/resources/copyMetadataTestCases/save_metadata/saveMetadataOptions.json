@@ -1,0 +1,7 @@
+{
+"final_workflow_outputs_dir":"<your directory for saving outputs>",
+"final_workflow_metadata_dir":"<your directory for saving metadata>",
+"use_relative_output_paths":true,
+"final_workflow_log_dir":"<your directory for saving logs>",
+"final_call_logs_dir":"<your directory for calling logs (may be the same as above)>"
+}
