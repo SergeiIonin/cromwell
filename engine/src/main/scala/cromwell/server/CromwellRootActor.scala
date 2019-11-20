@@ -25,6 +25,7 @@ import cromwell.engine.workflow.tokens.{DynamicRateLimiter, JobExecutionTokenDis
 import cromwell.engine.workflow.workflowstore.AbortRequestScanningActor.AbortConfig
 import cromwell.engine.workflow.workflowstore._
 import cromwell.jobstore.{JobStore, JobStoreActor, SqlJobStore}
+import cromwell.services.ServiceRegistryActor.IoActorRef
 import cromwell.services.{EngineServicesStore, ServiceRegistryActor}
 import cromwell.subworkflowstore.{SqlSubWorkflowStore, SubWorkflowStore, SubWorkflowStoreActor}
 import cromwell.util.GracefulShutdownHelper
@@ -109,10 +110,18 @@ abstract class CromwellRootActor(terminator: CromwellTerminator,
   lazy val ioActor = context.actorOf(IoActor.props(LoadConfig.IoQueueSize, nioParallelism, gcsParallelism, Option(ioThrottle), serviceRegistryActor), "IoActor")
   lazy val ioActorProxy = context.actorOf(IoActorProxy.props(ioActor), "IoProxy")
 
+  // Register the IoActor with the service registry:
+  serviceRegistryActor ! IoActorRef(ioActorProxy)
+
   lazy val workflowLogCopyRouter: ActorRef = context.actorOf(RoundRobinPool(numberOfWorkflowLogCopyWorkers)
     .withSupervisorStrategy(CopyWorkflowLogsActor.strategy)
     .props(CopyWorkflowLogsActor.props(serviceRegistryActor, ioActor)),
     "WorkflowLogCopyRouter")
+
+  //Call-caching config validation
+  lazy val callCachingConfig = config.getConfig("call-caching")
+  lazy val callCachingEnabled = callCachingConfig.getBoolean("enabled")
+  lazy val callInvalidateBadCacheResults = callCachingConfig.getBoolean("invalidate-bad-cache-results")
 
   lazy val callCache: CallCache = new CallCache(EngineServicesStore.engineDatabaseInterface)
 
@@ -151,6 +160,8 @@ abstract class CromwellRootActor(terminator: CromwellTerminator,
   lazy val workflowManagerActor = context.actorOf(
     WorkflowManagerActor.props(
       config = config,
+      callCachingEnabled = callCachingEnabled,
+      invalidateBadCacheResults = callInvalidateBadCacheResults,
       workflowStore = workflowStoreActor,
       ioActor = ioActorProxy,
       serviceRegistryActor = serviceRegistryActor,

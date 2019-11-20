@@ -105,9 +105,13 @@ trait MetadataSqlDatabase extends SqlDatabase {
                             => WorkflowMetadataSummaryEntry)
                          (implicit ec: ExecutionContext): Future[(Long, Long)]
 
+  def updateMetadataArchiveStatus(workflowExecutionUuid: String, newArchiveStatus: Option[String]): Future[Int]
+
   def getWorkflowStatus(workflowExecutionUuid: String)(implicit ec: ExecutionContext): Future[Option[String]]
 
   def getWorkflowLabels(workflowExecutionUuid: String)(implicit ec: ExecutionContext): Future[Map[String, String]]
+
+  def getRootAndSubworkflowLabels(rootWorkflowExecutionUuid: String)(implicit ec: ExecutionContext): Future[Map[String, Map[String, String]]]
 
   def queryWorkflowSummaries(parentIdWorkflowMetadataKey: String,
                              workflowStatuses: Set[String],
@@ -120,6 +124,7 @@ trait MetadataSqlDatabase extends SqlDatabase {
                              submissionTimestamp: Option[Timestamp],
                              startTimestampOption: Option[Timestamp],
                              endTimestampOption: Option[Timestamp],
+                             metadataArchiveStatus: Set[Option[String]],
                              includeSubworkflows: Boolean,
                              page: Option[Int],
                              pageSize: Option[Int])
@@ -135,6 +140,11 @@ trait MetadataSqlDatabase extends SqlDatabase {
                              submissionTimestamp: Option[Timestamp],
                              startTimestampOption: Option[Timestamp],
                              endTimestampOption: Option[Timestamp],
+                             metadataArchiveStatus: Set[Option[String]],
                              includeSubworkflows: Boolean)
                              (implicit ec: ExecutionContext): Future[Int]
+
+  def deleteNonLabelMetadataForWorkflow(rootWorkflowId: String)(implicit ec: ExecutionContext): Future[Int]
+
+  def isRootWorkflow(rootWorkflowId: String)(implicit ec: ExecutionContext): Future[Option[Boolean]]
 }

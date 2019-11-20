@@ -11,7 +11,13 @@ cromwell::build::start_build_heartbeat
 
 cromwell::build::assemble_jars
 
-java -jar $CROMWELL_BUILD_CROMWELL_JAR run ./centaur/src/main/resources/standardTestCases/hello/hello.wdl --inputs ./centaur/src/main/resources/standardTestCases/hello/hello.inputs --metadata-output ./run_mode_metadata.json | tee console_output.txt
+# Test 1: basic hello world
+java \
+    -jar "${CROMWELL_BUILD_CROMWELL_JAR}" \
+    run ./centaur/src/main/resources/standardTestCases/hello/hello.wdl \
+    --inputs ./centaur/src/main/resources/standardTestCases/hello/hello.inputs \
+    --metadata-output ./run_mode_metadata.json \
+| tee console_output.txt
 
 # grep exits 1 if no matches
 grep "terminal state: WorkflowSucceededState" console_output.txt
@@ -36,3 +42,55 @@ jq '{
 }' run_mode_metadata.json > actual.json
 
 cmp <(jq -cS . actual.json) <(jq -cS . expected.json)
+
+
+# Test 2: relative imports
+STANDARD_TEST_CASES="$PWD/centaur/src/main/resources/standardTestCases/import_subdir"
+SUBDIR="$STANDARD_TEST_CASES/subdir"
+mkdir -p "$SUBDIR"
+pushd "$SUBDIR" > /dev/null
+
+java -jar ${CROMWELL_BUILD_CROMWELL_JAR} run ../echo.wdl --inputs <(echo '{"echo.ss": ["Alice", "Bob"]}') --metadata-output ./run_mode_metadata.json | tee console_output.txt
+
+cat > expected.json <<FIN
+{
+  "actualWorkflowLanguage": "WDL",
+  "actualWorkflowLanguageVersion": "1.0",
+  "who" : ["Alice", "Bob"]
+}
+FIN
+
+jq '{
+  actualWorkflowLanguage,
+  actualWorkflowLanguageVersion,
+  who:.outputs["echo.echo.who"]
+}' run_mode_metadata.json > actual.json
+
+cmp <(jq -cS . actual.json) <(jq -cS . expected.json)
+popd > /dev/null
+
+# Test 3: program should exit with error in case if validation of command line arguments failed
+java -jar "${CROMWELL_BUILD_CROMWELL_JAR}" run nonexistent.wdl &
+pid=$!
+sleep 10
+if kill -0 $pid > /dev/null 2>&1; then
+  echo "ERROR: Process still exists"
+  kill $pid
+  exit 1
+fi
+
+# Test 4: application should return non-zero exit code when parsing of command-line arguments fails
+set +e
+java \
+    -jar "${CROMWELL_BUILD_CROMWELL_JAR}" \
+    run ./centaur/src/main/resources/standardTestCases/hello/hello.wdl \
+    ./centaur/src/main/resources/standardTestCases/hello/hello.inputs \
+2>&1 | tee console_output.txt
+retVal=$?
+set -e
+if [ $retVal -eq 0 ]; then
+    echo "ERROR: application exited with exit code 0 when invalid command-line arguments were provided"
+    exit 1
+else
+    grep "Error: Unknown argument" console_output.txt
+fi

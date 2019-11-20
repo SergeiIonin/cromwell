@@ -27,8 +27,7 @@ import cromwell.services.ServiceRegistryActor
 import cromwell.services.metadata.MetadataService._
 import cromwell.subworkflowstore.EmptySubWorkflowStoreActor
 import cromwell.util.SampleWdl
-import cromwell.webservice.metadata.MetadataBuilderActor
-import cromwell.webservice.metadata.MetadataBuilderActor.{BuiltMetadataResponse, FailedMetadataResponse, MetadataBuilderActorResponse}
+import cromwell.services._
 import org.scalactic.Equality
 import org.scalatest._
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
@@ -38,6 +37,7 @@ import wom.core.FullyQualifiedName
 import wom.types._
 import wom.values._
 
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.postfixOps
@@ -47,6 +47,7 @@ case class OutputNotFoundException(outputFqn: String, actualOutputs: String) ext
 case class LogNotFoundException(log: String) extends RuntimeException(s"Expected log $log was not found")
 
 object CromwellTestKitSpec {
+
   val ConfigText =
     """
       |akka {
@@ -158,6 +159,7 @@ object CromwellTestKitSpec {
     }
   }
 
+
   /**
     * Special case for validating outputs. Used when the test wants to check that an output exists, but doesn't care what
     * the actual value was.
@@ -268,6 +270,7 @@ abstract class CromwellTestKitSpec(val twms: TestWorkflowManagerSystem = default
 
   // Allow to use shouldEqual between 2 WdlTypes while acknowledging for edge cases
   implicit val wdlTypeSoftEquality = new Equality[WomType] {
+    @tailrec
     override def areEqual(a: WomType, b: Any): Boolean = (a, b) match {
       case (WomStringType | WomSingleFileType, WomSingleFileType | WomStringType) => true
       case (arr1: WomArrayType, arr2: WomArrayType) => areEqual(arr1.memberType, arr2.memberType)
@@ -327,7 +330,9 @@ abstract class CromwellTestKitSpec(val twms: TestWorkflowManagerSystem = default
       labels = customLabels
     )
     val workflowId = rootActor.underlyingActor.submitWorkflow(sources)
-    eventually { verifyWorkflowState(rootActor.underlyingActor.serviceRegistryActor, workflowId, terminalState) } (config = patienceConfig, pos = implicitly[org.scalactic.source.Position])
+    eventually { verifyWorkflowComplete(rootActor.underlyingActor.serviceRegistryActor, workflowId) } (config = patienceConfig, pos = implicitly[org.scalactic.source.Position])
+    verifyWorkflowState(rootActor.underlyingActor.serviceRegistryActor, workflowId, terminalState)
+
     val outcome = getWorkflowOutputsFromMetadata(workflowId, rootActor.underlyingActor.serviceRegistryActor)
     system.stop(rootActor)
     // And return the outcome:
@@ -348,7 +353,8 @@ abstract class CromwellTestKitSpec(val twms: TestWorkflowManagerSystem = default
     val sources = sampleWdl.asWorkflowSources(runtime, workflowOptions)
 
     val workflowId = rootActor.underlyingActor.submitWorkflow(sources)
-    eventually { verifyWorkflowState(rootActor.underlyingActor.serviceRegistryActor, workflowId, terminalState) } (config = patienceConfig, pos = implicitly[org.scalactic.source.Position])
+    eventually { verifyWorkflowComplete(rootActor.underlyingActor.serviceRegistryActor, workflowId) } (config = patienceConfig, pos = implicitly[org.scalactic.source.Position])
+    verifyWorkflowState(rootActor.underlyingActor.serviceRegistryActor, workflowId, WorkflowSucceeded)
 
     val outputs = getWorkflowOutputsFromMetadata(workflowId, rootActor.underlyingActor.serviceRegistryActor)
     val actualOutputNames = outputs.keys mkString ", "
@@ -369,31 +375,37 @@ abstract class CromwellTestKitSpec(val twms: TestWorkflowManagerSystem = default
     workflowId
   }
 
+  private def getWorkflowState(workflowId: WorkflowId, serviceRegistryActor: ActorRef)(implicit ec: ExecutionContext): WorkflowState = {
+    val statusResponse = serviceRegistryActor.ask(GetStatus(workflowId))(TimeoutDuration).collect {
+      case SuccessfulMetadataJsonResponse(_, jsObject) => WorkflowState.withName(jsObject.fields("status").asInstanceOf[JsString].value)
+      case f => throw new RuntimeException(s"Unexpected status response for $workflowId: $f")
+    }
+    Await.result(statusResponse, TimeoutDuration)
+  }
+
   /**
-    * Verifies that a state is correct. // TODO: There must be a better way...?
+    * Verifies that a workflow is complete
+    */
+  protected def verifyWorkflowComplete(serviceRegistryActor: ActorRef, workflowId: WorkflowId)(implicit ec: ExecutionContext): Unit = {
+    List(WorkflowSucceeded, WorkflowFailed, WorkflowAborted) should contain(getWorkflowState(workflowId, serviceRegistryActor))
+    ()
+  }
+
+  /**
+    * Verifies that a state is correct.
     */
   protected def verifyWorkflowState(serviceRegistryActor: ActorRef, workflowId: WorkflowId, expectedState: WorkflowState)(implicit ec: ExecutionContext): Unit = {
-    def getWorkflowState(workflowId: WorkflowId, serviceRegistryActor: ActorRef)(implicit ec: ExecutionContext): WorkflowState = {
-      val statusResponse = serviceRegistryActor.ask(GetStatus(workflowId))(TimeoutDuration).collect {
-        case StatusLookupResponse(_, state) => state
-        case f => throw new RuntimeException(s"Unexpected status response for $workflowId: $f")
-      }
-      Await.result(statusResponse, TimeoutDuration)
-    }
-
     getWorkflowState(workflowId, serviceRegistryActor) should equal (expectedState)
     ()
   }
 
   private def getWorkflowOutputsFromMetadata(id: WorkflowId, serviceRegistryActor: ActorRef): Map[FullyQualifiedName, WomValue] = {
-    val mba = system.actorOf(MetadataBuilderActor.props(serviceRegistryActor))
-    val response = mba.ask(WorkflowOutputs(id)).mapTo[MetadataBuilderActorResponse] collect {
-      case BuiltMetadataResponse(r) => r
-      case FailedMetadataResponse(e) => throw e
+
+    val response = serviceRegistryActor.ask(WorkflowOutputs(id)).mapTo[MetadataJsonResponse] collect {
+      case SuccessfulMetadataJsonResponse(_, r) => r
+      case FailedMetadataJsonResponse(_, e) => throw e
     }
     val jsObject = Await.result(response, TimeoutDuration)
-
-    system.stop(mba)
 
     jsObject.getFields(WorkflowMetadataKeys.Outputs).toList match {
       case head::_ => head.asInstanceOf[JsObject].fields.map( x => (x._1, jsValueToWdlValue(x._2)))

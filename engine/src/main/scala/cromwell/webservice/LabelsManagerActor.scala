@@ -1,11 +1,11 @@
 package cromwell.webservice
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import common.collections.EnhancedCollections._
 import cromwell.core._
-import cromwell.core.labels.Labels
+import cromwell.core.labels.{Label, Labels}
 import cromwell.services.metadata.MetadataEvent
 import cromwell.services.metadata.MetadataService._
+import cromwell.services.SuccessfulMetadataJsonResponse
 import cromwell.webservice.LabelsManagerActor._
 import spray.json.{DefaultJsonProtocol, JsObject, JsString}
 
@@ -21,15 +21,6 @@ object LabelsManagerActor {
 
   sealed trait LabelsAction extends LabelsMessage
   final case class LabelsAddition(data: LabelsData) extends LabelsAction
-
-  sealed trait LabelsResponse extends LabelsMessage
-
-  def processLabelsResponse(workflowId: WorkflowId, labels: Map[String, String]): JsObject = {
-    JsObject(Map(
-      WorkflowMetadataKeys.Id -> JsString(workflowId.toString),
-      WorkflowMetadataKeys.Labels -> JsObject(labels safeMapValues JsString.apply)
-    ))
-  }
 
   sealed abstract class LabelsManagerActorResponse
   final case class BuiltLabelsManagerResponse(response: JsObject) extends LabelsManagerActorResponse
@@ -59,7 +50,7 @@ class LabelsManagerActor(serviceRegistryActor: ActorRef) extends Actor with Acto
         At this point in the actor lifecycle, wfId has already been filled out so the .get is safe
       */
       serviceRegistryActor ! GetLabels(wfId.get)
-    case LabelLookupResponse(id, origLabels) =>
+    case SuccessfulMetadataJsonResponse(_, jsObject) =>
       /*
         There's some trickery going on here. We've updated the labels in the metadata store but almost certainly when
         the store received the GetLabels request above the summarizer will not have been run so our new values are
@@ -73,8 +64,16 @@ class LabelsManagerActor(serviceRegistryActor: ActorRef) extends Actor with Acto
 
         At this point in the actor lifecycle, newLabels will have been filled in so the .get is safe
       */
-      val updated = origLabels ++ newLabels.get.asMap
-      target ! BuiltLabelsManagerResponse(processLabelsResponse(id, updated))
+
+      def replaceOrAddLabel(originalJson: JsObject, label: Label): JsObject = {
+        val labels = originalJson.fields.get("labels").map(_.asJsObject.fields).getOrElse(Map.empty)
+        val updatedLabels = labels + (label.key -> JsString(label.value))
+
+        JsObject(originalJson.fields + ("labels" -> JsObject(updatedLabels)))
+      }
+
+      val updatedJson = newLabels.get.value.foldLeft(jsObject)(replaceOrAddLabel)
+      target ! BuiltLabelsManagerResponse(updatedJson)
       context stop self
     case f: MetadataServiceFailure =>
       /*

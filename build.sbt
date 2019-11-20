@@ -71,10 +71,6 @@ lazy val cwl = project
   .dependsOn(wom)
   .dependsOn(wom % "test->test")
 
-lazy val cwlEncoder = project
-  .withLibrarySettings("cromwell-cwl-encoder")
-  .dependsOn(cwl)
-
 lazy val core = project
   .withLibrarySettings("cromwell-core", coreDependencies)
   .dependsOn(wom)
@@ -165,12 +161,17 @@ lazy val services = project
   .dependsOn(wdlBiscayneLanguageFactory % "test->test")
   .dependsOn(cwlV1_0LanguageFactory % "test->test")
   .dependsOn(core % "test->test")
+  .dependsOn(ftpFileSystem % "test->test")
 
 lazy val hybridCarboniteMetadataService = project
-  .withLibrarySettings("hybrid-carbonite-metadata-service")
+  .withLibrarySettings("hybrid-carbonite-metadata-service", hybridCarboniteMetadataServiceDependencies)
   .dependsOn(services)
   .dependsOn(engine)
   .dependsOn(core % "test->test")
+  .dependsOn(services % "test->test")
+  .dependsOn(ftpFileSystem % "test->test")
+  .dependsOn(httpFileSystem % "test->test")
+
 
 lazy val backendRoot = Path("supportedBackends")
 
@@ -373,6 +374,7 @@ lazy val server = project
   .dependsOn(wdlDraft3LanguageFactory)
   .dependsOn(wdlBiscayneLanguageFactory)
   .dependsOn(cwlV1_0LanguageFactory)
+  .dependsOn(hybridCarboniteMetadataService)
   .dependsOn(engine % "test->test")
   .dependsOn(common % "test->test")
 
@@ -383,6 +385,7 @@ lazy val root = (project in file("."))
   .aggregate(`cloud-nio-impl-ftp`)
   .aggregate(`cloud-nio-spi`)
   .aggregate(`cloud-nio-util`)
+  .aggregate(`cromwell-drs-localizer`)
   .aggregate(awsBackend)
   .aggregate(awsS3FileSystem)
   .aggregate(backend)
@@ -400,13 +403,13 @@ lazy val root = (project in file("."))
   .aggregate(databaseSql)
   .aggregate(dockerHashing)
   .aggregate(drsFileSystem)
-  .aggregate(`cromwell-drs-localizer`)
   .aggregate(engine)
   .aggregate(ftpFileSystem)
   .aggregate(gcsFileSystem)
   .aggregate(googlePipelinesCommon)
   .aggregate(googlePipelinesV1Alpha2)
   .aggregate(googlePipelinesV2Alpha1)
+  .aggregate(httpFileSystem)
   .aggregate(jesBackend)
   .aggregate(languageFactoryCore)
   .aggregate(ossFileSystem)
@@ -433,3 +436,5 @@ lazy val root = (project in file("."))
   .aggregate(wes2cromwell)
   .aggregate(wom)
   .aggregate(womtool)
+  .aggregate(hybridCarboniteMetadataService)
+  .withAggregateSettings()
