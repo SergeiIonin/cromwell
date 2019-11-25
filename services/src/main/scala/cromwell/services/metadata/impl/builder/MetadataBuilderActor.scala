@@ -20,14 +20,6 @@ import scala.language.postfixOps
 
 
 object MetadataBuilderActor {
-  sealed trait MetadataBuilderActorResponse extends MetadataServiceResponse { def originalRequest: MetadataReadAction }
-  final case class BuiltMetadataResponse(originalRequest: MetadataReadAction, responseJson: JsObject) extends MetadataBuilderActorResponse
-  final case class FailedMetadataResponse(originalRequest: MetadataReadAction, reason: Throwable) extends MetadataBuilderActorResponse
-<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
-=======
-  case object ReadyToBuildResponse extends MetadataServiceResponse
->>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
-
   sealed trait MetadataBuilderActorState
   case object Idle extends MetadataBuilderActorState
   case object WaitingForMetadataService extends MetadataBuilderActorState
@@ -54,6 +46,17 @@ object MetadataBuilderActor {
   def props(readMetadataWorkerMaker: () => Props) = {
     Props(new MetadataBuilderActor(readMetadataWorkerMaker))
   }
+
+
+
+  sealed trait MetadataBuilderActorResponse extends MetadataServiceResponse { def originalRequest: MetadataReadAction }
+  final case class BuiltMetadataResponse(originalRequest: MetadataReadAction, responseJson: JsObject) extends MetadataBuilderActorResponse // used in CWMA
+  //final case class FailedMetadataResponse(originalRequest: MetadataReadAction, reason: Throwable) extends MetadataBuilderActorResponse // never used
+  /*<<<<<<< HEAD:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala
+  =======
+  >>>>>>> ece96e877b724eead56e6ecb0391acea50f7cfc4:services/src/main/scala/cromwell/services/metadata/impl/builder/MetadataBuilderActor.scala*/
+
+  case object ReadyToBuildResponse extends MetadataServiceResponse
 
   val log = LoggerFactory.getLogger("MetadataBuilder")
 
